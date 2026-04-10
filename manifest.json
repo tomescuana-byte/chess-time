@@ -1,0 +1,13 @@
+{
+  "background_color": "#161512",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Blitz Odds",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "Blitz",
+  "start_url": "/",
+  "theme_color": "#759900",
+  "description": "Real-time multiplayer chess with time handicap",
+  "id": "chess-handicap"
+}
