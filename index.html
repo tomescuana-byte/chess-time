@@ -108,6 +108,34 @@ async function finalizeGame(game,gid){
   await Promise.all([fPush(`playerGames/${game.white}`,rec),fPush(`playerGames/${game.black}`,rec)]);
 }
 
+
+/* ═══ PREMOVE VALIDATION — piece movement geometry only ═══ */
+function premoveValid(piece, fr, fc, tr, tc) {
+  if(fr===tr&&fc===tc)return false;
+  const p=piece.toLowerCase(),color=pc(piece);
+  const dr=tr-fr,dc=tc-fc,adr=Math.abs(dr),adc=Math.abs(dc);
+  if(p==='p'){
+    const d=color==='w'?-1:1,st=color==='w'?6:1;
+    // forward 1 or 2 from start
+    if(dc===0&&dr===d)return true;
+    if(dc===0&&dr===2*d&&fr===st)return true;
+    // diagonal capture
+    if(adc===1&&dr===d)return true;
+    return false;
+  }
+  if(p==='n')return(adr===2&&adc===1)||(adr===1&&adc===2);
+  if(p==='b')return adr===adc&&adr>0;
+  if(p==='r')return(dr===0||dc===0)&&(adr+adc>0);
+  if(p==='q')return(adr===adc&&adr>0)||((dr===0||dc===0)&&adr+adc>0);
+  if(p==='k'){
+    // normal king move
+    if(adr<=1&&adc<=1)return true;
+    // castling
+    if(adr===0&&adc===2)return true;
+    return false;
+  }
+  return false;
+}
 /* ═══ DRAG STATE (pointer-based) ═══ */
 const DS={on:false,fr:null,fc:null};
 function initDrag(){
@@ -557,7 +585,7 @@ W._mv=(fr,fc,tr,tc)=>{
   if(!gs||!gInfo||TERM.includes(gs.status))return;
   const myC=gInfo.white===user?'w':'b';
   if(gs.turn!==myC){
-    if(fr!==null&&fc!==null){const piece=gs.board[fr][fc];if(piece&&pc(piece)===myC){S.premove={from:[fr,fc],to:[tr,tc]};render();}}
+    if(fr!==null&&fc!==null){const piece=gs.board[fr][fc];if(piece&&pc(piece)===myC&&premoveValid(piece,fr,fc,tr,tc)){S.premove={from:[fr,fc],to:[tr,tc]};render();}}
     return;
   }
   S.premove=null;
@@ -579,7 +607,14 @@ W.sq=(r,c)=>{
   const myC=gInfo.white===user?'w':'b',piece=gs.board[r][c];
   if(gs.turn!==myC){
     if(!S.premove?.from){if(piece&&pc(piece)===myC){S.premove={from:[r,c]};render();}}
-    else if(!S.premove.to){if(piece&&pc(piece)===myC){S.premove={from:[r,c]};render();}else{S.premove={from:S.premove.from,to:[r,c]};render();}}
+    else if(!S.premove.to){
+      if(piece&&pc(piece)===myC){S.premove={from:[r,c]};render();}
+      else{
+        const pfr=S.premove.from,pp=gs.board[pfr[0]][pfr[1]];
+        if(pp&&premoveValid(pp,pfr[0],pfr[1],r,c)){S.premove={from:pfr,to:[r,c]};render();}
+        else{S.premove=null;render();}
+      }
+    }
     else{S.premove=null;render();}
     return;
   }
@@ -669,4 +704,3 @@ initDrag();
 </script>
 </body>
 </html>
-
