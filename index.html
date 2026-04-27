@@ -547,8 +547,8 @@ W.pdDown=(e,r,c)=>{
   DS.on=true;DS.fr=r;DS.fc=c;
   const g=document.getElementById('drag-ghost');
   if(g){g.src=pi(piece);g.style.display='block';g.style.left=e.clientX+'px';g.style.top=e.clientY+'px';const sqSz=Math.floor(document.getElementById('chboard')?.getBoundingClientRect().width/8)||50;g.style.width=sqSz+'px';g.style.height=sqSz+'px';}
-  if(gs.turn===myC){S.sel=[r,c];S.lMv=legals(gs.board,r,c,gs);}
-  else{S.premove={from:[r,c]};}
+  if(gs.turn===myC){S.premove=null;S.sel=[r,c];S.lMv=legals(gs.board,r,c,gs);}
+  else{S.premove={from:[r,c]};S.sel=null;S.lMv=[];}
   render();
 };
 
@@ -621,7 +621,7 @@ function gameHtml(){
   const sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',draw_stalemate:'Draw — stalemate!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — resign!',resigned_black:'White wins — resign!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const clk=(n,elo,ms,act,me,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:7px"><img src="${pi(me?(myC==='w'?'K':'k'):(myC==='w'?'k':'K'))}" style="width:20px;height:20px;opacity:.7"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}${me?' (you)':''}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span>${me&&premove?.to?`<span style="font-size:.7rem;color:#7da0c0">pre</span>`:''}</div><span id="${id}" style="font-size:${ms<15000?'1.45rem':'1.6rem'};font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
   const promoHtml=promo?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:200"><div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;text-align:center;border:1px solid #2a2927"><p style="margin:0 0 1rem;color:#bab9b8;font-size:.9rem">Promotion:</p><div style="display:flex;gap:8px">${['q','r','b','n'].map(p=>`<button onclick="W.promo('${p}')" style="width:68px;height:68px;border-radius:8px;border:2px solid #3d3a36;background:#161512;cursor:pointer;padding:6px"><img src="${pi(myC==='w'?p.toUpperCase():p)}" style="width:100%;height:100%"></button>`).join('')}</div></div></div>`:'';
-  const overHtml=fin?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;justify-content:center;align-items:center;z-index:100" onclick="W.leave()"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;text-align:center;max-width:300px;margin:1rem;border:1px solid #2a2927"><div style="font-size:3rem;margin-bottom:1rem">${(['white_wins','black_timeout','resigned_black'].includes(gs.status))?'♔':(['black_wins','white_timeout','resigned_white'].includes(gs.status))?'♚':'🤝'}</div><h2 style="margin:0 0 8px;color:#f0ede8;font-size:1.1rem">${sm()}</h2><p style="color:#6b6a69;margin:0 0 1.5rem;font-size:.85rem">Tap to return to lobby</p><button onclick="W.leave()" class="btn-g" style="padding:.7rem 2rem">← Lobby</button></div></div>`:'';
+  const overHtml=fin?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;justify-content:center;align-items:center;z-index:100"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;text-align:center;max-width:300px;margin:1rem;border:1px solid #3d3a36;box-shadow:0 8px 40px rgba(0,0,0,.8)"><div style="font-size:3rem;margin-bottom:1rem">${(['white_wins','black_timeout','resigned_black'].includes(gs.status))?'♔':(['black_wins','white_timeout','resigned_white'].includes(gs.status))?'♚':'🤝'}</div><h2 style="margin:0 0 8px;color:#f0ede8;font-size:1.1rem">${sm()}</h2><p style="color:#6b6a69;margin:0 0 1.5rem;font-size:.85rem">Game over</p><button onclick="W.leave()" class="btn-g" style="padding:.7rem 2rem;width:100%">← Back to Lobby</button></div></div>`:'';
   return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:${gs.status==='check'?'#c8a400':'#6b6a69'};font-weight:600;font-size:.82rem">${sm()}</span><div style="display:flex;gap:6px">${!fin?`<button onclick="W.resign()" style="padding:5px 12px;border-radius:5px;border:1px solid #882020;background:transparent;color:#cc4444;cursor:pointer;font-size:.78rem">Resign</button>`:''}${fin?`<button onclick="W.leave()" class="btn-g" style="padding:5px 12px;font-size:.8rem">← Lobby</button>`:''}</div></div>
   ${clk(oppN,oppElo,oppMs,oppA,false,'co')}
@@ -669,3 +669,4 @@ initDrag();
 </script>
 </body>
 </html>
+
