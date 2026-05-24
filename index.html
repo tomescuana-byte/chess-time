@@ -138,26 +138,33 @@ function premoveValid(piece, fr, fc, tr, tc) {
 }
 /* ═══ BOTS SYSTEM ═══ */
 const BOT_NAMES = [
-  "Alex_M","Maria_P","Ioan_T","Elena_C","Andrei_B","Ana_D","Mihai_R","Ioana_S",
-  "Cristian_F","Laura_G","Bogdan_N","Raluca_V","Florin_H","Simona_L","Radu_K",
-  "Alina_E","Daniel_W","Gabriela_X","Vlad_Y","Roxana_Z","Stefan_A","Madalina_J",
-  "Adrian_Q","Nicoleta_U","George_I","Adriana_O","Lucian_2","Oana_3","Catalin_4",
-  "Diana_5","Razvan_6","Andreea_7","Sorin_8","Monica_9","Cosmin_10","Anca_11",
-  "Silviu_12","Carmen_13","Marian_14","Denisa_15","Octavian_16","Larisa_17",
-  "Emanuel_18","Teodora_19","Robert_20","Valentina_21","Alexandru_22","Bianca_23",
-  "Ionut_24","Mirela_25","Dragos_26","Claudia_27","Ciprian_28","Ramona_29",
-  "Liviu_30","Georgiana_31","Tudor_32","Simone_33","Cristi_34","Natalia_35",
-  "Doru_36","Patricia_37","Nicu_38","Irina_39","Cezar_40","Sabina_41",
-  "Tiberiu_42","Felicia_43","Valentin_44","Cristina_45","Paul_46","Camelia_47",
-  "Eugen_48","Veronica_49","Cornel_50","Luminita_51","Petre_52","Mariana_53",
-  "Vasile_54","Elisabeta_55","Traian_56","Anisoara_57","Gelu_58","Dorina_59",
-  "Nelu_60","Marilena_61","Viorel_62","Cornelia_63","Doru_64","Liliana_65",
-  "Luca_66","Sofia_67","Noah_68","Emma_69","Oliver_70","Isabella_71",
-  "James_72","Mia_73","Elijah_74","Charlotte_75","William_76","Amelia_77",
-  "Benjamin_78","Harper_79","Lucas_80","Evelyn_81","Henry_82","Abigail_83",
-  "Alexander_84","Emily_85","Mason_86","Elizabeth_87","Ethan_88","Sofia_89",
-  "Daniel_90","Avery_91","Jacob_92","Ella_93","Logan_94","Scarlett_95",
-  "Jackson_96","Grace_97","Sebastian_98","Chloe_99","Jack_100"
+  // Legende ale șahului
+  "DeepKnight","IronCastle","SilverBishop","GoldenPawn","CrimsonQueen",
+  "ShadowRook","FrostKing","StormKnight","VoidMaster","PhantomGambit",
+  // Stiluri de joc
+  "BlitzWolf","TacticFox","StratosMind","EndgameGhost","OpeningTrap",
+  "SicilianDragon","KingsGambit","QueensPawn","NimzoWitch","CatalanOwl",
+  // Nume inventive
+  "Vortex64","MatrixBishop","NeuralRook","QuantumPawn","AlphaForge",
+  "CipherKing","ByteKnight","LogicQueen","BinaryBlade","HexMaster",
+  // Personaje mitologice/fantastică
+  "AresGambit","HermesBlitz","AthenaEnd","ZeusStrike","PoseidonRook",
+  "LokiTactic","OdinForge","ThorCastle","FreyaQueen","ValkyriePawn",
+  // Natură și cosmos
+  "NebulaMind","CosmosRook","SolarBishop","LunarKnight","AuroraQueen",
+  "TwilightKing","EclipseForge","StarlightPawn","CometBlitz","NovaStrike",
+  // Animale de putere
+  "OnyxPanther","CrimsonHawk","IronWolf","SilverFalcon","AzureDragon",
+  "GoldenEagle","ShadowLynx","FrostBear","ThunderRaven","StoneGolem",
+  // Elemente
+  "EmberRook","TidalBishop","GaleKnight","GraniteQueen","FluxPawn",
+  "CinderKing","MistralEnd","AbyssGambit","InfernoBlitz","TerraForge",
+  // Clasic elegant
+  "MaestroNoir","GrandVizier","SilkRook","VelvetKnight","EbonyQueen",
+  "IvoryKing","ObsidianPawn","QuartzBishop","SapphireEnd","RubyGambit",
+  // Misterios
+  "EnigmaX","ShadowCode","CrypticMind","ArcaneRook","MysticForge",
+  "OracleKnight","ProphetQueen","SeerKing","AugurPawn","OmenBishop"
 ];
 
 // ELO distribution: 600-2400, weighted toward middle
@@ -280,49 +287,58 @@ function bestBotMove(gs,color,depth) {
 
 /* ─── Bot Game Manager ─── */
 let botGameInterval=null;
+let botThinking=false;
 function startBotGame(gid,botName,botColor,botEloVal,depth){
   clearInterval(botGameInterval);
+  botThinking=false;
   botGameInterval=setInterval(async()=>{
+    if(botThinking)return; // prevent double-fire while thinking
     const g=await fGet(`games/${gid}`);
-    if(!g||TERM.includes(g.status)){clearInterval(botGameInterval);return;}
+    if(!g||TERM.includes(g.status)){clearInterval(botGameInterval);botThinking=false;return;}
     const botC=botColor;
     if(g.turn!==botC)return;
     // Check timeout
     const elapsed=Date.now()-g.lastMoveTs;
     if(botC==='w'&&elapsed>g.whiteMs){return;}
     if(botC==='b'&&elapsed>g.blackMs){return;}
-    const gs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
+    botThinking=true; // lock: no new ticks until this move is committed
     setTimeout(async()=>{
-      const m=bestBotMove(gs,botC,depth);
-      if(!m)return;
-      const ngs=applyMove(gs,[m.fr,m.fc],[m.tr,m.tc],null);
-      const el2=Date.now()-g.lastMoveTs;
-      const nW=botC==='w'?Math.max(0,g.whiteMs-el2):g.whiteMs;
-      const nB=botC==='b'?Math.max(0,g.blackMs-el2):g.blackMs;
-      const ng={...g,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
-      await fSet(`games/${gid}`,ng);
-      if(TERM.includes(ngs.status)&&!ng.eloUpdated){
-        // ELO update for bot game
-        const playerName=botC==='w'?g.black:g.white;
-        const playerColor=botC==='w'?'b':'w';
-        let pScore,bScore;
-        if(['white_wins','black_timeout','resigned_black'].includes(ngs.status)){pScore=playerColor==='w'?1:0;bScore=playerColor==='w'?0:1;}
-        else if(['black_wins','white_timeout','resigned_white'].includes(ngs.status)){pScore=playerColor==='w'?0:1;bScore=playerColor==='w'?1:0;}
-        else{pScore=0.5;bScore=0.5;}
-        const pD=await fGet(`players/${playerName}`);
-        const pE=pD?.elo||1000;
-        const iWMs=g.initWhiteMs||g.whiteMs,iBMs=g.initBlackMs||g.blackMs;
-        const pChg=eloChg(pE,botEloVal,pScore,playerColor==='w'?iWMs:iBMs,playerColor==='w'?iBMs:iWMs);
-        const nPE=pE+pChg;
-        const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:botName,result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
-        await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
-        await fSet(`games/${gid}`,{...ng,eloUpdated:true});
-        clearInterval(botGameInterval);
+      try{
+        // Re-fetch fresh state to guard against user moving at same time
+        const gF=await fGet(`games/${gid}`);
+        if(!gF||gF.turn!==botC||TERM.includes(gF.status)){return;}
+        const gsF={board:JSON.parse(gF.boardJson),turn:gF.turn,castling:gF.castling,enPassant:gF.enPassant||null,fullMoves:gF.fullMoves,status:gF.status};
+        const m=bestBotMove(gsF,botC,depth);
+        if(!m)return;
+        const ngs=applyMove(gsF,[m.fr,m.fc],[m.tr,m.tc],null);
+        const el2=Date.now()-gF.lastMoveTs;
+        const nW=botC==='w'?Math.max(0,gF.whiteMs-el2):gF.whiteMs;
+        const nB=botC==='b'?Math.max(0,gF.blackMs-el2):gF.blackMs;
+        const ng={...gF,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+        await fSet(`games/${gid}`,ng);
+        if(TERM.includes(ngs.status)&&!ng.eloUpdated){
+          const playerName=botC==='w'?gF.black:gF.white;
+          const playerColor=botC==='w'?'b':'w';
+          let pScore,bScore;
+          if(['white_wins','black_timeout','resigned_black'].includes(ngs.status)){pScore=playerColor==='w'?1:0;bScore=playerColor==='w'?0:1;}
+          else if(['black_wins','white_timeout','resigned_white'].includes(ngs.status)){pScore=playerColor==='w'?0:1;bScore=playerColor==='w'?1:0;}
+          else{pScore=0.5;bScore=0.5;}
+          const pD=await fGet(`players/${playerName}`);
+          const pE=pD?.elo||1000;
+          const iWMs=gF.initWhiteMs||gF.whiteMs,iBMs=gF.initBlackMs||gF.blackMs;
+          const pChg=eloChg(pE,botEloVal,pScore,playerColor==='w'?iWMs:iBMs,playerColor==='w'?iBMs:iWMs);
+          const nPE=pE+pChg;
+          const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:botName,result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
+          await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
+          await fSet(`games/${gid}`,{...ng,eloUpdated:true});
+          clearInterval(botGameInterval);
+        }
+      }finally{
+        botThinking=false; // always release lock
       }
     },botThinkTime(botEloVal));
   },500);
 }
-
 /* ─── Inject bots into allPlayers (display only) ─── */
 function getBotPlayers(){
   const bots={};
@@ -750,7 +766,7 @@ function enterGame(gid,game){
         execMove(from,to,null);return;
       }
     }
-    if(S.screen==='game')render();
+    if(S.screen==='game'&&!DS.on)render(); // skip render if user is mid-drag
   });
   unsubs.push(u);
 }
