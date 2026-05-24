@@ -136,6 +136,203 @@ function premoveValid(piece, fr, fc, tr, tc) {
   }
   return false;
 }
+/* ═══ BOTS SYSTEM ═══ */
+const BOT_NAMES = [
+  "Alex_M","Maria_P","Ioan_T","Elena_C","Andrei_B","Ana_D","Mihai_R","Ioana_S",
+  "Cristian_F","Laura_G","Bogdan_N","Raluca_V","Florin_H","Simona_L","Radu_K",
+  "Alina_E","Daniel_W","Gabriela_X","Vlad_Y","Roxana_Z","Stefan_A","Madalina_J",
+  "Adrian_Q","Nicoleta_U","George_I","Adriana_O","Lucian_2","Oana_3","Catalin_4",
+  "Diana_5","Razvan_6","Andreea_7","Sorin_8","Monica_9","Cosmin_10","Anca_11",
+  "Silviu_12","Carmen_13","Marian_14","Denisa_15","Octavian_16","Larisa_17",
+  "Emanuel_18","Teodora_19","Robert_20","Valentina_21","Alexandru_22","Bianca_23",
+  "Ionut_24","Mirela_25","Dragos_26","Claudia_27","Ciprian_28","Ramona_29",
+  "Liviu_30","Georgiana_31","Tudor_32","Simone_33","Cristi_34","Natalia_35",
+  "Doru_36","Patricia_37","Nicu_38","Irina_39","Cezar_40","Sabina_41",
+  "Tiberiu_42","Felicia_43","Valentin_44","Cristina_45","Paul_46","Camelia_47",
+  "Eugen_48","Veronica_49","Cornel_50","Luminita_51","Petre_52","Mariana_53",
+  "Vasile_54","Elisabeta_55","Traian_56","Anisoara_57","Gelu_58","Dorina_59",
+  "Nelu_60","Marilena_61","Viorel_62","Cornelia_63","Doru_64","Liliana_65",
+  "Luca_66","Sofia_67","Noah_68","Emma_69","Oliver_70","Isabella_71",
+  "James_72","Mia_73","Elijah_74","Charlotte_75","William_76","Amelia_77",
+  "Benjamin_78","Harper_79","Lucas_80","Evelyn_81","Henry_82","Abigail_83",
+  "Alexander_84","Emily_85","Mason_86","Elizabeth_87","Ethan_88","Sofia_89",
+  "Daniel_90","Avery_91","Jacob_92","Ella_93","Logan_94","Scarlett_95",
+  "Jackson_96","Grace_97","Sebastian_98","Chloe_99","Jack_100"
+];
+
+// ELO distribution: 600-2400, weighted toward middle
+function botElo(idx) {
+  const elos = [
+    600,650,700,720,750,780,800,820,850,880,
+    900,920,950,980,1000,1020,1050,1080,1100,1120,
+    1150,1180,1200,1220,1250,1280,1300,1320,1350,1380,
+    1400,1420,1450,1480,1500,1520,1550,1580,1600,1620,
+    1650,1680,1700,1720,1750,1780,1800,1820,1850,1880,
+    1900,1920,1950,1980,2000,2020,2050,2080,2100,2120,
+    2150,2180,2200,2220,2250,2280,2300,2320,2350,2380,
+    2400,2350,2300,2250,2200,2150,2100,2050,2000,1950,
+    1900,1850,1800,1750,1700,1650,1600,1550,1500,1450,
+    1400,1350,1300,1250,1200,1150,1100,1050,1000,950
+  ];
+  return elos[idx % elos.length];
+}
+
+// Depth based on ELO
+function botDepth(elo) {
+  if(elo < 800) return 1;
+  if(elo < 1000) return 1;
+  if(elo < 1200) return 2;
+  if(elo < 1400) return 2;
+  if(elo < 1600) return 3;
+  if(elo < 1800) return 3;
+  if(elo < 2000) return 4;
+  if(elo < 2200) return 5;
+  return 6;
+}
+
+// Think time (ms) - varies to seem human
+function botThinkTime(elo) {
+  const base = elo < 1000 ? 800 : elo < 1500 ? 1200 : elo < 2000 ? 1800 : 2500;
+  return base + Math.random() * 1000;
+}
+
+/* ─── Piece values ─── */
+const PVAL = {P:100,N:320,B:330,R:500,Q:900,K:20000,p:-100,n:-320,b:-330,r:-500,q:-900,k:-20000};
+const PST = {
+  P:[0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
+  N:[-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+  B:[-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
+  R:[0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
+  Q:[-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
+  K:[-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20]
+};
+
+function evalBoard(board) {
+  let score = 0;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    const p=board[r][c];if(!p)continue;
+    const col=pc(p),isW=col==='w',sym=p.toUpperCase();
+    const baseVal=isW?PVAL[sym]:-PVAL[sym];
+    const pstIdx=isW?r*8+c:(7-r)*8+c;
+    const pstVal=(PST[sym]?PST[sym][pstIdx]:0)*(isW?1:-1);
+    score+=baseVal+pstVal;
+  }
+  return score;
+}
+
+function minimax(board,depth,alpha,beta,isMax,gs) {
+  if(depth===0) return evalBoard(board);
+  const color=isMax?'w':'b';
+  const moves=[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    if(!board[r][c]||pc(board[r][c])!==color)continue;
+    const lm=legals(board,r,c,gs);
+    for(const[tr,tc] of lm) moves.push({fr:r,fc:c,tr,tc});
+  }
+  if(!moves.length) return isMax?-99999:99999;
+  if(isMax){
+    let best=-Infinity;
+    for(const m of moves){
+      const nb=board.map(r=>[...r]);
+      const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
+      const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
+      best=Math.max(best,minimax(nb,depth-1,alpha,beta,false,ngs));
+      alpha=Math.max(alpha,best);
+      if(beta<=alpha)break;
+    }
+    return best;
+  }else{
+    let best=Infinity;
+    for(const m of moves){
+      const nb=board.map(r=>[...r]);
+      const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
+      const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
+      best=Math.min(best,minimax(nb,depth-1,alpha,beta,true,ngs));
+      beta=Math.min(beta,best);
+      if(beta<=alpha)break;
+    }
+    return best;
+  }
+}
+
+function bestBotMove(gs,color,depth) {
+  const board=gs.board;
+  const moves=[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    if(!board[r][c]||pc(board[r][c])!==color)continue;
+    const lm=legals(board,r,c,gs);
+    for(const[tr,tc] of lm) moves.push({fr:r,fc:c,tr,tc});
+  }
+  if(!moves.length)return null;
+  // Shuffle for variety at low depths
+  moves.sort(()=>Math.random()-0.5);
+  const isMax=color==='w';
+  let best=isMax?-Infinity:Infinity,bestMove=moves[0];
+  for(const m of moves){
+    const nb=board.map(r=>[...r]);
+    const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
+    const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
+    const val=minimax(nb,depth-1,-Infinity,Infinity,!isMax,ngs);
+    if(isMax?val>best:val<best){best=val;bestMove=m;}
+  }
+  return bestMove;
+}
+
+/* ─── Bot Game Manager ─── */
+let botGameInterval=null;
+function startBotGame(gid,botName,botColor,botEloVal,depth){
+  clearInterval(botGameInterval);
+  botGameInterval=setInterval(async()=>{
+    const g=await fGet(`games/${gid}`);
+    if(!g||TERM.includes(g.status)){clearInterval(botGameInterval);return;}
+    const botC=botColor;
+    if(g.turn!==botC)return;
+    // Check timeout
+    const elapsed=Date.now()-g.lastMoveTs;
+    if(botC==='w'&&elapsed>g.whiteMs){return;}
+    if(botC==='b'&&elapsed>g.blackMs){return;}
+    const gs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
+    setTimeout(async()=>{
+      const m=bestBotMove(gs,botC,depth);
+      if(!m)return;
+      const ngs=applyMove(gs,[m.fr,m.fc],[m.tr,m.tc],null);
+      const el2=Date.now()-g.lastMoveTs;
+      const nW=botC==='w'?Math.max(0,g.whiteMs-el2):g.whiteMs;
+      const nB=botC==='b'?Math.max(0,g.blackMs-el2):g.blackMs;
+      const ng={...g,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+      await fSet(`games/${gid}`,ng);
+      if(TERM.includes(ngs.status)&&!ng.eloUpdated){
+        // ELO update for bot game
+        const playerName=botC==='w'?g.black:g.white;
+        const playerColor=botC==='w'?'b':'w';
+        let pScore,bScore;
+        if(['white_wins','black_timeout','resigned_black'].includes(ngs.status)){pScore=playerColor==='w'?1:0;bScore=playerColor==='w'?0:1;}
+        else if(['black_wins','white_timeout','resigned_white'].includes(ngs.status)){pScore=playerColor==='w'?0:1;bScore=playerColor==='w'?1:0;}
+        else{pScore=0.5;bScore=0.5;}
+        const pD=await fGet(`players/${playerName}`);
+        const pE=pD?.elo||1000;
+        const iWMs=g.initWhiteMs||g.whiteMs,iBMs=g.initBlackMs||g.blackMs;
+        const pChg=eloChg(pE,botEloVal,pScore,playerColor==='w'?iWMs:iBMs,playerColor==='w'?iBMs:iWMs);
+        const nPE=pE+pChg;
+        const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:botName,result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
+        await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
+        await fSet(`games/${gid}`,{...ng,eloUpdated:true});
+        clearInterval(botGameInterval);
+      }
+    },botThinkTime(botEloVal));
+  },500);
+}
+
+/* ─── Inject bots into allPlayers (display only) ─── */
+function getBotPlayers(){
+  const bots={};
+  BOT_NAMES.forEach((name,i)=>{
+    bots[name]={elo:botElo(i),isBot:true};
+  });
+  return bots;
+}
+
+/* ═══ END BOTS ═══ */
 /* ═══ DRAG STATE (pointer-based) ═══ */
 const DS={on:false,fr:null,fc:null};
 function initDrag(){
@@ -333,7 +530,7 @@ function lobbyHtml(){
   const inC=S.inChalls.length?`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">⚔ Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`:'';
   const outC=S.outChall?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #c8a400;display:flex;justify-content:space-between;align-items:center"><span style="color:#c8a400;font-size:.88rem">⏳ Sent to <b>${esc(S.outChall.to)}</b>...</span><button onclick="W.cancelC()" class="btn-o" style="padding:4px 10px;font-size:.78rem">Cancel</button></div>`:'';
   const rows=pl.map((p,i)=>{
-    const isMe=p.name===S.user,canC=p.status==='online'&&!S.outChall&&!isMe,canW=p.status==='ingame'&&p.gameId;
+    const isMe=p.name===S.user,canC=p.status==='online'&&!S.outChall&&!isMe,canW=p.status==='ingame'&&p.gameId&&!p.isBot;
     return`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:${isMe?'#1a2a1a':'#161512'};border-radius:6px;margin-bottom:4px;border:${isMe?'1px solid #2a4a2a':'1px solid transparent'}">
       <div style="display:flex;align-items:center;gap:7px;min-width:0">
         <span style="color:#6b6a69;font-size:.72rem;min-width:20px;text-align:right">#${i+1}</span>
@@ -341,7 +538,7 @@ function lobbyHtml(){
         <div><div style="display:flex;align-items:center;gap:5px">
           <button onclick="W.openProf('${esc(p.name)}')" style="background:none;border:none;padding:0;color:${p.status==='inactive'?'#6b6a69':isMe?'#a8c000':'#f0ede8'};font-weight:700;font-size:.9rem;cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(p.name)}${isMe?' ◀':''}</button>
           <span style="color:#c8a400;font-size:.8rem;font-weight:600">${p.elo}</span>
-          ${p.status==='ingame'?`<span style="color:#cc4444;font-size:.7rem">playing</span>`:p.status==='inactive'?`<span style="color:#3d3a36;font-size:.7rem">offline</span>`:''}
+          ${p.isBot?'':p.status==='ingame'?`<span style="color:#cc4444;font-size:.7rem">playing</span>`:p.status==='inactive'?`<span style="color:#3d3a36;font-size:.7rem">offline</span>`:''}
         </div></div>
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0">
@@ -377,7 +574,8 @@ function lobbyHtml(){
 
 function challDlgHtml(myElo){
   if(!S.challDlg)return'';
-  const oppElo=S.allPlayers[S.challTarget]?.elo||1000;
+  const botPlrs2=getBotPlayers();
+  const oppElo=botPlrs2[S.challTarget]?botPlrs2[S.challTarget].elo:(S.allPlayers[S.challTarget]?.elo||1000);
   const dis=S.autoTime?'style="opacity:.4;pointer-events:none"':'';
   return`<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;justify-content:center;align-items:flex-start;z-index:100;padding:1rem;overflow-y:auto" onmousedown="if(event.target===this)W.closeC()">
   <div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;width:100%;max-width:400px;border:1px solid #2a2927;margin:auto" onmousedown="event.stopPropagation()">
@@ -415,7 +613,28 @@ W.send=async()=>{
   const id=`${S.user}_${S.challTarget}_${Date.now()}`;
   const rc=S.challColor==='r'?(Math.random()<0.5?'w':'b'):S.challColor;
   let wMs=S.wTimeSec*1000,bMs=S.bTimeSec*1000;
-  if(S.autoTime){const{mySec,oppSec}=applyAutoTime(S.allPlayers[S.user]?.elo||1000,S.allPlayers[S.challTarget]?.elo||1000);const mw=rc==='w';wMs=(mw?mySec:oppSec)*1000;bMs=(mw?oppSec:mySec)*1000;}
+  const botPlrs=getBotPlayers();
+  const isBot=!!botPlrs[S.challTarget];
+  if(S.autoTime){
+    const myElo=S.allPlayers[S.user]?.elo||1000;
+    const oppElo=isBot?botElo(BOT_NAMES.indexOf(S.challTarget)):S.allPlayers[S.challTarget]?.elo||1000;
+    const{mySec,oppSec}=applyAutoTime(myElo,oppElo);
+    const mw=rc==='w';wMs=(mw?mySec:oppSec)*1000;bMs=(mw?oppSec:mySec)*1000;
+  }
+  if(isBot){
+    // Instant bot game
+    const white=rc==='w'?S.user:S.challTarget,black=rc==='w'?S.challTarget:S.user;
+    const botColor=rc==='w'?'b':'w'; // bot plays opposite of user
+    const botEloVal=botElo(BOT_NAMES.indexOf(S.challTarget));
+    const depth=botDepth(botEloVal);
+    const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,isBot:true,botName:S.challTarget,botColor,botElo:botEloVal,botDepth:depth};
+    await fSet(`games/${id}`,game);
+    S.challDlg=false;
+    enterGame(id,game);
+    // Start bot engine
+    startBotGame(id,S.challTarget,botColor,botEloVal,depth);
+    return;
+  }
   await fSet(`challenges/${id}`,{from:S.user,to:S.challTarget,challColor:rc,whiteMs:wMs,blackMs:bMs,status:'pending',ts:Date.now()});
   S.outChall={from:S.user,to:S.challTarget,whiteMs:wMs,blackMs:bMs,id};S.challDlg=false;render();
 };
@@ -509,6 +728,9 @@ function enterGame(gid,game){
   S.gid=gid;S.gInfo=game;
   S.gs={board:JSON.parse(game.boardJson),turn:game.turn,castling:game.castling,enPassant:game.enPassant||null,fullMoves:game.fullMoves,status:game.status};
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';
+  if(game.isBot&&game.botName&&game.botColor&&!TERM.includes(game.status)){
+    startBotGame(gid,game.botName,game.botColor,game.botElo||1000,game.botDepth||2);
+  }
   fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid});
   hbId=setInterval(()=>fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid}),5000);
   render();
