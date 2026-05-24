@@ -110,6 +110,17 @@ async function finalizeBotGame(game,gid){
   const nPE=pE+pChg;
   const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
   await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
+  // Also update bot's ELO in Firebase so leaderboard reflects it
+  const botName=game.botName;
+  if(botName){
+    const botD=await fGet(`players/${botName}`);
+    const botCurElo=botD?.elo??botEloVal;
+    const botScore=1-pScore;
+    const botChg=eloChg(botCurElo,pE,botScore,oppMs,myMs);
+    const nBotE=Math.max(100,botCurElo+botChg);
+    const botH=[...(botD?.eloHistory||[]),{elo:nBotE,ts:Date.now(),gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg}];
+    await fSet(`players/${botName}`,{...(botD||{}),elo:nBotE,eloHistory:botH.slice(-50),isBot:true});
+  }
   const wScore=playerColor==='w'?pScore:(1-pScore),bScore=playerColor==='b'?pScore:(1-pScore);
   const rec={gid,white:game.white,black:game.black,wScore,bScore,wEloDelta:playerColor==='w'?pChg:0,bEloDelta:playerColor==='b'?pChg:0,ts:Date.now(),initWhiteMs:iWMs,initBlackMs:iBMs};
   await fPush(`playerGames/${playerName}`,rec);
@@ -570,8 +581,10 @@ function pGameId(n){return S.presence[n]?.gameId||null;}
 
 function lobbyHtml(){
   const botPlrs=getBotPlayers();
-  const botList=Object.entries(botPlrs).map(([k,v])=>({name:k,elo:v.elo||1000,status:'online',gameId:null,isBot:true}));
-  let pl=[...Object.entries(S.allPlayers).map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k)})),...botList];
+  const botNames=new Set(BOT_NAMES);
+  const botList=Object.entries(botPlrs).map(([k,v])=>({name:k,elo:S.allPlayers[k]?.elo??v.elo??1000,status:'online',gameId:null,isBot:true}));
+  // exclude bots from the real-player list to avoid duplicates
+  let pl=[...Object.entries(S.allPlayers).filter(([k])=>!botNames.has(k)).map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k)})),...botList];
   if(S.sort==='elo')pl.sort((a,b)=>b.elo-a.elo);else pl.sort((a,b)=>a.name.localeCompare(b.name));
   const myElo=S.allPlayers[S.user]?.elo||1000;
   const myRank=pl.findIndex(p=>p.name===S.user)+1;
@@ -624,7 +637,7 @@ function lobbyHtml(){
 function challDlgHtml(myElo){
   if(!S.challDlg)return'';
   const botPlrs2=getBotPlayers();
-  const oppElo=botPlrs2[S.challTarget]?botPlrs2[S.challTarget].elo:(S.allPlayers[S.challTarget]?.elo||1000);
+  const oppElo=S.allPlayers[S.challTarget]?.elo??(botPlrs2[S.challTarget]?.elo)||1000;
   const dis=S.autoTime?'style="opacity:.4;pointer-events:none"':'';
   return`<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;justify-content:center;align-items:flex-start;z-index:100;padding:1rem;overflow-y:auto" onmousedown="if(event.target===this)W.closeC()">
   <div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;width:100%;max-width:400px;border:1px solid #2a2927;margin:auto" onmousedown="event.stopPropagation()">
@@ -666,7 +679,7 @@ W.send=async()=>{
   const isBot=!!botPlrs[S.challTarget];
   if(S.autoTime){
     const myElo=S.allPlayers[S.user]?.elo||1000;
-    const oppElo=isBot?botElo(BOT_NAMES.indexOf(S.challTarget)):S.allPlayers[S.challTarget]?.elo||1000;
+    const oppElo=isBot?(S.allPlayers[S.challTarget]?.elo??botElo(BOT_NAMES.indexOf(S.challTarget))):S.allPlayers[S.challTarget]?.elo||1000;
     const{mySec,oppSec}=applyAutoTime(myElo,oppElo);
     const mw=rc==='w';wMs=(mw?mySec:oppSec)*1000;bMs=(mw?oppSec:mySec)*1000;
   }
@@ -674,7 +687,7 @@ W.send=async()=>{
     // Instant bot game
     const white=rc==='w'?S.user:S.challTarget,black=rc==='w'?S.challTarget:S.user;
     const botColor=rc==='w'?'b':'w'; // bot plays opposite of user
-    const botEloVal=botElo(BOT_NAMES.indexOf(S.challTarget));
+    const botEloVal=S.allPlayers[S.challTarget]?.elo??botElo(BOT_NAMES.indexOf(S.challTarget));
     const depth=botDepth(botEloVal);
     const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,isBot:true,botName:S.challTarget,botColor,botElo:botEloVal,botDepth:depth};
     await fSet(`games/${id}`,game);
