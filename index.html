@@ -89,8 +89,11 @@ function applyAutoTime(myElo,oppElo){const{strongerSec,weakerSec}=calcAutoTime(m
 function eloChg(myE,oppE,score,myMs,oppMs){const exp=1/(1+Math.pow(10,(oppE-myE)/400));return Math.round(Math.round(32*Math.min(4,Math.max(0.5,oppMs/myMs)))*(score-exp));}
 
 /* Bot game ELO: only updates the real player, never writes the bot to Firebase */
+let _botEloLock=false; // in-memory lock — set synchronously before any await
+function resetBotEloLock(){_botEloLock=false;}
 async function finalizeBotGame(game,gid){
-  if(game.eloUpdated)return;
+  if(_botEloLock||game.eloUpdated)return;
+  _botEloLock=true; // grabbed synchronously — second concurrent call sees true immediately
   await fSet(`games/${gid}`,{...game,eloUpdated:true});
   const playerName=S.user;
   const playerColor=game.white===S.user?'w':'b';
@@ -775,6 +778,7 @@ function enterGame(gid,game){
   S.gs={board:JSON.parse(game.boardJson),turn:game.turn,castling:game.castling,enPassant:game.enPassant||null,fullMoves:game.fullMoves,status:game.status};
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';
   if(game.isBot&&game.botName&&game.botColor&&!TERM.includes(game.status)){
+    resetBotEloLock();
     startBotGame(gid,game.botName,game.botColor,game.botElo||1000,game.botDepth||2);
   }
   fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid});
