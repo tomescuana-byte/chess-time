@@ -522,7 +522,9 @@ function pStatus(n){const now=Date.now(),p=S.presence[n];if(!p||now-p.ts>15000)r
 function pGameId(n){return S.presence[n]?.gameId||null;}
 
 function lobbyHtml(){
-  let pl=Object.entries(S.allPlayers).map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k)}));
+  const botPlrs=getBotPlayers();
+  const botList=Object.entries(botPlrs).map(([k,v])=>({name:k,elo:v.elo||1000,status:'online',gameId:null,isBot:true}));
+  let pl=[...Object.entries(S.allPlayers).map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k)})),...botList];
   if(S.sort==='elo')pl.sort((a,b)=>b.elo-a.elo);else pl.sort((a,b)=>a.name.localeCompare(b.name));
   const myElo=S.allPlayers[S.user]?.elo||1000;
   const myRank=pl.findIndex(p=>p.name===S.user)+1;
@@ -604,7 +606,7 @@ function challDlgHtml(myElo){
 W.sort=s=>{S.sort=s;render();};
 W.setT=(w,v)=>{if(S.autoTime)return;if(w==='w')S.wTimeSec=Math.min(600,Math.max(0,+v));else S.bTimeSec=Math.min(600,Math.max(0,+v));render();};
 W.adjT=(w,d)=>{W.setT(w,(w==='w'?S.wTimeSec:S.bTimeSec)+d);};
-W.toggleAuto=()=>{S.autoTime=!S.autoTime;if(S.autoTime){const{mySec,oppSec}=applyAutoTime(S.allPlayers[S.user]?.elo||1000,S.allPlayers[S.challTarget]?.elo||1000);const mw=S.challColor==='w';S.wTimeSec=mw?mySec:oppSec;S.bTimeSec=mw?oppSec:mySec;}render();};
+W.toggleAuto=()=>{S.autoTime=!S.autoTime;if(S.autoTime){const botPlrsAT=getBotPlayers();const myEloAT=S.allPlayers[S.user]?.elo||1000;const oppEloAT=botPlrsAT[S.challTarget]?botPlrsAT[S.challTarget].elo:(S.allPlayers[S.challTarget]?.elo||1000);const{mySec,oppSec}=applyAutoTime(myEloAT,oppEloAT);const mw=S.challColor==='w';S.wTimeSec=mw?mySec:oppSec;S.bTimeSec=mw?oppSec:mySec;}render();};
 W.sendChat=async()=>{const inp=document.getElementById('chat-in');const txt=(inp?.value||'').trim();if(!txt||!S.user)return;await fPush('chat',{user:S.user,text:txt,ts:Date.now()});if(inp){inp.value='';inp.focus();}};
 W.openC=async t=>{S.challTarget=t;S.challDlg=true;S.challH2h=null;S.autoTime=false;render();const h=await fGet(`h2h/${h2hKey(S.user,t)}`);S.challH2h=h?{myWins:h[S.user]||0,oppWins:h[t]||0,draws:h.draws||0}:{myWins:0,oppWins:0,draws:0};if(S.challDlg)render();};
 W.closeC=()=>{S.challDlg=false;render();};
