@@ -87,7 +87,34 @@ function applyAutoTime(myElo,oppElo){const{strongerSec,weakerSec}=calcAutoTime(m
 
 /* ═══ ELO ═══ */
 function eloChg(myE,oppE,score,myMs,oppMs){const exp=1/(1+Math.pow(10,(oppE-myE)/400));return Math.round(Math.round(32*Math.min(4,Math.max(0.5,oppMs/myMs)))*(score-exp));}
+
+/* Bot game ELO: only updates the real player, never writes the bot to Firebase */
+async function finalizeBotGame(game,gid){
+  if(game.eloUpdated)return;
+  await fSet(`games/${gid}`,{...game,eloUpdated:true});
+  const playerName=S.user;
+  const playerColor=game.white===S.user?'w':'b';
+  const botEloVal=game.botElo||1000;
+  let pScore;
+  if(['white_wins','black_timeout','resigned_black'].includes(game.status))pScore=playerColor==='w'?1:0;
+  else if(['black_wins','white_timeout','resigned_white'].includes(game.status))pScore=playerColor==='w'?0:1;
+  else pScore=0.5;
+  const pD=await fGet(`players/${playerName}`);
+  const pE=pD?.elo||1000;
+  const iWMs=game.initWhiteMs||game.whiteMs,iBMs=game.initBlackMs||game.blackMs;
+  const myMs=playerColor==='w'?iWMs:iBMs,oppMs=playerColor==='w'?iBMs:iWMs;
+  const pChg=eloChg(pE,botEloVal,pScore,myMs,oppMs);
+  const nPE=pE+pChg;
+  const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
+  await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
+  const wScore=playerColor==='w'?pScore:(1-pScore),bScore=playerColor==='b'?pScore:(1-pScore);
+  const rec={gid,white:game.white,black:game.black,wScore,bScore,wEloDelta:playerColor==='w'?pChg:0,bEloDelta:playerColor==='b'?pChg:0,ts:Date.now(),initWhiteMs:iWMs,initBlackMs:iBMs};
+  await fPush(`playerGames/${playerName}`,rec);
+}
+
+/* Regular (human vs human) ELO: only white player runs this to avoid double-update */
 async function finalizeGame(game,gid){
+  if(game.isBot)return; // bot games handled by finalizeBotGame
   if(game.white!==S.user||game.eloUpdated)return;
   await fSet(`games/${gid}`,{...game,eloUpdated:true});
   let wSc,bSc;
@@ -184,23 +211,17 @@ function botElo(idx) {
   return elos[idx % elos.length];
 }
 
-// Depth based on ELO
+// Depth based on ELO — capped at 3 so worker finishes in <1s
 function botDepth(elo) {
-  if(elo < 800) return 1;
   if(elo < 1000) return 1;
-  if(elo < 1200) return 2;
   if(elo < 1400) return 2;
-  if(elo < 1600) return 3;
-  if(elo < 1800) return 3;
-  if(elo < 2000) return 4;
-  if(elo < 2200) return 5;
-  return 6;
+  return 3;
 }
 
-// Think time (ms) - varies to seem human
+// Think time (ms) — short delay so it feels natural, worker adds its own time
 function botThinkTime(elo) {
-  const base = elo < 1000 ? 800 : elo < 1500 ? 1200 : elo < 2000 ? 1800 : 2500;
-  return base + Math.random() * 1000;
+  const base = elo < 1000 ? 200 : elo < 1500 ? 400 : 600;
+  return base + Math.random() * 400;
 }
 
 /* ─── Piece values ─── */
@@ -334,22 +355,9 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
             const nB=botColor==='b'?Math.max(0,gF2.blackMs-el2):gF2.blackMs;
             const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
             await fSet(`games/${gid}`,ng);
-            if(TERM.includes(ngs.status)&&!ng.eloUpdated){
-              const playerName=botColor==='w'?gF2.black:gF2.white;
-              const playerColor=botColor==='w'?'b':'w';
-              let pScore;
-              if(['white_wins','black_timeout','resigned_black'].includes(ngs.status))pScore=playerColor==='w'?1:0;
-              else if(['black_wins','white_timeout','resigned_white'].includes(ngs.status))pScore=playerColor==='w'?0:1;
-              else pScore=0.5;
-              const pD=await fGet(`players/${playerName}`);
-              const pE=pD?.elo||1000;
-              const iWMs=gF2.initWhiteMs||gF2.whiteMs,iBMs=gF2.initBlackMs||gF2.blackMs;
-              const pChg=eloChg(pE,botEloVal,pScore,playerColor==='w'?iWMs:iBMs,playerColor==='w'?iBMs:iWMs);
-              const nPE=pE+pChg;
-              const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:botName,result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
-              await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
-              await fSet(`games/${gid}`,{...ng,eloUpdated:true});
+            if(TERM.includes(ngs.status)){
               clearInterval(botGameInterval);
+              // ELO finalization handled by Firebase listener via finalizeBotGame
             }
           }finally{botThinking=false;}
         };
@@ -775,7 +783,7 @@ function enterGame(gid,game){
   const u=fOn(`games/${gid}`,g=>{
     if(!g)return;S.gInfo=g;
     S.gs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
-    if(TERM.includes(g.status)&&!g.eloUpdated)finalizeGame(g,gid);
+    if(TERM.includes(g.status)&&!g.eloUpdated){if(g.isBot)finalizeBotGame(g,gid);else finalizeGame(g,gid);}
     const myC=g.white===S.user?'w':'b';
     if(S.premove?.from&&S.premove?.to&&g.turn===myC&&!TERM.includes(g.status)){
       const{from,to}=S.premove;S.premove=null;
@@ -899,7 +907,7 @@ async function execMove(from,to,promo){
   const ngs=applyMove(gs,from,to,promo);
   const ng={...gInfo,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
   S.gs=ngs;S.gInfo=ng;await fSet(`games/${gid}`,ng);
-  if(TERM.includes(ngs.status)&&!ng.eloUpdated)finalizeGame(ng,gid);
+  if(TERM.includes(ngs.status)&&!ng.eloUpdated){if(ng.isBot)finalizeBotGame(ng,gid);else finalizeGame(ng,gid);}
   render();
 }
 W.resign=async()=>{const{gInfo,gs,user,gid}=S;if(!gInfo||!gid)return;const st=gInfo.white===user?'resigned_white':'resigned_black';const upd={...gInfo,boardJson:JSON.stringify(gs.board),status:st};await fSet(`games/${gid}`,upd);S.gInfo={...gInfo,status:st};S.gs={...gs,status:st};finalizeGame(upd,gid);render();};
