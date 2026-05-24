@@ -350,7 +350,28 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
         const gsF={board:JSON.parse(gF.boardJson),turn:gF.turn,castling:gF.castling,enPassant:gF.enPassant||null,fullMoves:gF.fullMoves,status:gF.status};
         // Spin up a fresh worker for this move
         if(botWorker)botWorker.terminate();
-        botWorker=new Worker(_botWorkerUrl);
+        // Workers need a server (https/http). If file://, fall back to sync.
+        let workerSupported=true;
+        try{botWorker=new Worker(_botWorkerUrl);}catch(e){workerSupported=false;}
+        if(!workerSupported){
+          // Synchronous fallback (depth capped at 2 to keep it fast)
+          const m=bestBotMove(gsF,botColor,Math.min(depth,2));
+          if(!m){botThinking=false;return;}
+          const gF2=await fGet(`games/${gid}`);
+          if(!gF2||gF2.turn!==botColor||TERM.includes(gF2.status)){botThinking=false;return;}
+          const gsF2={board:JSON.parse(gF2.boardJson),turn:gF2.turn,castling:gF2.castling,enPassant:gF2.enPassant||null,fullMoves:gF2.fullMoves,status:gF2.status};
+          const legalNow=legals(gsF2.board,m.fr,m.fc,gsF2);
+          if(!legalNow.some(([tr,tc])=>tr===m.tr&&tc===m.tc)){botThinking=false;return;}
+          const ngs=applyMove(gsF2,[m.fr,m.fc],[m.tr,m.tc],null);
+          const el2=Date.now()-gF2.lastMoveTs;
+          const nW=botColor==='w'?Math.max(0,gF2.whiteMs-el2):gF2.whiteMs;
+          const nB=botColor==='b'?Math.max(0,gF2.blackMs-el2):gF2.blackMs;
+          const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+          await fSet(`games/${gid}`,ng);
+          if(TERM.includes(ngs.status))clearInterval(botGameInterval);
+          botThinking=false;
+          return;
+        }
         botWorker.onmessage=async(e)=>{
           try{
             botWorker=null;
@@ -637,7 +658,7 @@ function lobbyHtml(){
 function challDlgHtml(myElo){
   if(!S.challDlg)return'';
   const botPlrs2=getBotPlayers();
-  const oppElo=S.allPlayers[S.challTarget]?.elo??(botPlrs2[S.challTarget]?.elo)||1000;
+  const oppElo=S.allPlayers[S.challTarget]?.elo??(botPlrs2[S.challTarget]?.elo??1000);
   const dis=S.autoTime?'style="opacity:.4;pointer-events:none"':'';
   return`<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;justify-content:center;align-items:flex-start;z-index:100;padding:1rem;overflow-y:auto" onmousedown="if(event.target===this)W.closeC()">
   <div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;width:100%;max-width:400px;border:1px solid #2a2927;margin:auto" onmousedown="event.stopPropagation()">
