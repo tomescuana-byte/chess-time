@@ -222,7 +222,7 @@ function pickNameHtml(){
 
 function authHtml(){
   if(S.fpMode)return`<div style="display:flex;justify-content:center;align-items:center;min-height:100svh;padding:1rem"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;width:100%;max-width:360px;border:1px solid #2a2927">
-    <h2 style="color:#f0ede8;margin-bottom:.5rem;font-size:1.1rem">🔑 Reset password</h2>
+    <h2 style="color:#f0ede8;margin-bottom:.5rem;font-size:1.1rem">Reset password</h2>
     <p style="color:#6b6a69;font-size:.85rem;margin-bottom:1rem">Enter your email and we'll send you a link to set a new password.</p>
     <input type="email" id="fpe" placeholder="Email address" value="${esc(S.fpEmail)}" autocomplete="email" style="margin-bottom:10px" onkeydown="if(event.key==='Enter')W.fpSub()">
     ${S.fpMsg?`<p style="color:#a8c000;font-size:.88rem;margin-bottom:10px">${esc(S.fpMsg)}</p>`:''}
@@ -233,7 +233,7 @@ function authHtml(){
     </div>
   </div></div>`;
   const reg=S.aMode==='register';
-  return`<div style="display:flex;justify-content:center;align-items:center;min-height:100svh;padding:1rem"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;width:100%;max-width:380px;border:1px solid #2a2927"><div style="text-align:center;margin-bottom:1.75rem"><div style="font-size:2.5rem;margin-bottom:.4rem">♟</div><h1 style="font-size:1.4rem;font-weight:700;color:#f0ede8">Blitz Odds</h1><p style="color:#6b6a69;font-size:.8rem;margin-top:3px">Chess with time odds</p></div>
+  return`<div style="display:flex;justify-content:center;align-items:center;min-height:100svh;padding:1rem"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;width:100%;max-width:380px;border:1px solid #2a2927"><div style="text-align:center;margin-bottom:1.75rem"><img src="/icon-192.png" alt="" style="width:56px;height:56px;border-radius:12px;margin-bottom:.5rem"><h1 style="font-size:1.4rem;font-weight:700;color:#f0ede8">Blitz Odds</h1><p style="color:#6b6a69;font-size:.8rem;margin-top:3px">Chess with time odds</p></div>
   <div style="display:flex;gap:4px;margin-bottom:1.5rem;background:#161512;border-radius:8px;padding:4px"><button onclick="W.aMode('login')" style="flex:1;padding:8px;border-radius:6px;border:none;font-weight:600;font-size:.85rem;background:${reg?'transparent':'#759900'};color:${reg?'#6b6a69':'#fff'}">Sign in</button><button onclick="W.aMode('register')" style="flex:1;padding:8px;border-radius:6px;border:none;font-weight:600;font-size:.85rem;background:${reg?'#759900':'transparent'};color:${reg?'#fff':'#6b6a69'}">Register</button></div>
   <div style="display:flex;flex-direction:column;gap:10px">
     ${reg?`<input type="text" id="au" placeholder="Username (2-20 chars)" value="${esc(S.aUser)}" autocapitalize="none" autocomplete="username" onkeydown="if(event.key==='Enter')W.auth()">`:``}
@@ -373,7 +373,6 @@ function countsHtml(){
   return`<div style="text-align:center;color:#6b6a69;font-size:.78rem;padding:14px 0 6px">
     <b style="color:#bab9b8">${humans.length}</b> player${humans.length===1?'':'s'} registered
     · <b style="color:#759900">${online}</b> online now
-    · <span style="color:#4a4845">${BOT_NAMES.length} bots</span>
   </div>`;
 }
 
@@ -404,7 +403,7 @@ function homeHtml(){
       <b style="color:#a8c000">${fs(ex.oppSec)}</b>.</p>`:''}
   </div>
   <div class="card">
-    <h3 style="margin:0 0 8px;font-size:.85rem;color:#6b6a69">💬 Chat</h3>
+    <h3 style="margin:0 0 8px;font-size:.85rem;color:#6b6a69">Chat</h3>
     <div id="chat-msgs" style="height:140px;overflow-y:auto;margin-bottom:8px">${chatMsgsHtml()}</div>
     <div style="display:flex;gap:6px">
       <input type="text" id="chat-in" placeholder="Message..." maxlength="200" onkeydown="if(event.key==='Enter'){W.sendChat();event.preventDefault();}" style="flex:1;padding:8px 10px;font-size:.9rem">
@@ -416,11 +415,11 @@ function homeHtml(){
     <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:12px">Play</h2>
     ${S.queueMode?queueHtml():`
     <button class="play-btn primary" onclick="W.startQueue('ranked')">
-      <b>⚔ Ranked</b><span>Random opponent near your rating. Clocks and colour set automatically. Counts towards the leaderboard.</span></button>
+      <b>Ranked</b><span>Random opponent near your rating. Clocks and colour set automatically. Counts towards the leaderboard.</span></button>
     <button class="play-btn" onclick="W.startQueue('casual')">
-      <b>🎲 Casual</b><span>Same game, same handicap — your rating does not move. For practice.</span></button>
+      <b>Casual</b><span>Same game, same handicap — your rating does not move. For practice.</span></button>
     <button class="play-btn" onclick="W.openLobby()">
-      <b>🎯 Challenge a player</b><span>Pick who you play and set the clocks yourself. Does not affect the leaderboard.</span></button>`}
+      <b>Challenge a player</b><span>Pick who you play and set the clocks yourself. Does not affect the leaderboard.</span></button>`}
     ${S.challMsg?`<div style="margin-top:4px;border-left:3px solid #cc4444;background:#161512;border-radius:6px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="color:#cc4444;font-size:.84rem">${esc(S.challMsg)}</span><button onclick="W.dismissMsg()" class="btn-o" style="padding:3px 9px;font-size:.76rem">OK</button></div>`:''}
   </div>
   ${inChallsHtml()}`;
@@ -432,7 +431,7 @@ function homeHtml(){
     </div>`).join('');
 
   const right=`<div class="card" style="padding:14px">
-    <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:10px">🏆 Top 10</h2>
+    <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:10px">Top 10</h2>
     ${top10||'<p style="color:#3d3a36;font-size:.85rem;text-align:center;padding:1rem">No players yet</p>'}
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a2927;font-size:.78rem;color:#6b6a69">
       You are <b style="color:#f0ede8">#${myRank||'—'}</b> of ${all.length}
@@ -452,7 +451,7 @@ function homeHtml(){
 
 function headerHtml(myElo,myRank){
   return`<div style="max-width:1180px;margin:0 auto 12px;display:flex;justify-content:space-between;align-items:center;padding-top:.25rem">
-    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">♟ Blitz Odds</h1>
+    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">Blitz Odds</h1>
     <p style="font-size:.78rem"><button onclick="W.openProf('${esc(S.user)}')" style="background:none;border:none;padding:0;color:#759900;font-weight:700;cursor:pointer;text-decoration:underline;font-size:.78rem">${esc(S.user)}</button> <span style="color:#c8a400">ELO ${myElo}</span> <span style="color:#6b6a69">#${myRank||'—'}</span></p></div>
     <button onclick="W.logout()" class="btn-o" style="padding:5px 12px;font-size:.82rem">Logout</button>
   </div>`;
@@ -460,7 +459,7 @@ function headerHtml(myElo,myRank){
 
 function inChallsHtml(){
   if(!S.inChalls.length)return'';
-  return`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">⚔ Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`;
+  return`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`;
 }
 
 /* Search accepts either a name fragment or a rating: a bare number means "around
@@ -481,7 +480,7 @@ function lobbyHtml(){
   const myRank=pl.findIndex(p=>p.name===S.user)+1;
   const dot=s=>`<span style="width:8px;height:8px;border-radius:50%;background:${s==='online'?'#759900':s==='ingame'?'#cc4444':'#3d3a36'};display:inline-block;flex-shrink:0"></span>`;
   const inC=inChallsHtml();
-  const outC=S.outChall?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #c8a400;display:flex;justify-content:space-between;align-items:center"><span style="color:#c8a400;font-size:.88rem">⏳ Sent to <b>${esc(S.outChall.to)}</b>...</span><button onclick="W.cancelC()" class="btn-o" style="padding:4px 10px;font-size:.78rem">Cancel</button></div>`:'';
+  const outC=S.outChall?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #c8a400;display:flex;justify-content:space-between;align-items:center"><span style="color:#c8a400;font-size:.88rem">Sent to <b>${esc(S.outChall.to)}</b>...</span><button onclick="W.cancelC()" class="btn-o" style="padding:4px 10px;font-size:.78rem">Cancel</button></div>`:'';
   const msgC=S.challMsg?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #cc4444;display:flex;justify-content:space-between;align-items:center"><span style="color:#cc4444;font-size:.88rem">${esc(S.challMsg)}</span><button onclick="W.dismissMsg()" class="btn-o" style="padding:4px 10px;font-size:.78rem">OK</button></div>`:'';
   const rows=pl.map((p,i)=>{
     const isMe=p.name===S.user,canC=p.status==='online'&&!S.outChall&&!isMe,canW=p.status==='ingame'&&p.gameId&&!p.isBot;
@@ -505,7 +504,7 @@ function lobbyHtml(){
   const dlg=challDlgHtml(myElo);
   return`<div style="max-width:620px;margin:0 auto;padding:.75rem">
   <div style="display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;margin-bottom:1rem">
-    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">🎯 Challenge a player</h1>
+    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">Challenge a player</h1>
     <p style="font-size:.78rem"><span style="color:#c8a400">ELO ${myElo}</span> <span style="color:#6b6a69">#${myRank||'—'}</span></p></div>
     <button onclick="W.goHome()" class="btn-o" style="padding:5px 12px;font-size:.82rem">← Back</button>
   </div>
@@ -527,18 +526,18 @@ function challDlgHtml(myElo){
   return`<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;justify-content:center;align-items:flex-start;z-index:100;padding:1rem;overflow-y:auto" onmousedown="if(event.target===this)W.closeC()">
   <div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;width:100%;max-width:400px;border:1px solid #2a2927;margin:auto" onmousedown="event.stopPropagation()">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
-      <div><h2 style="font-size:1rem;color:#f0ede8">⚔ Challenge ${esc(S.challTarget)}</h2>
+      <div><h2 style="font-size:1rem;color:#f0ede8">Challenge ${esc(S.challTarget)}</h2>
       <div style="font-size:.8rem;margin-top:3px"><span style="color:#c8a400">You: ${myElo}</span> <span style="color:#c8a400;margin-left:8px">${esc(S.challTarget)}: ${oppElo}</span></div></div>
       ${S.challH2h?`<div style="text-align:right;font-size:.76rem;color:#6b6a69;line-height:1.7"><div>W:<b style="color:#759900">${S.challH2h.myWins}</b> D:<b style="color:#c8a400">${S.challH2h.draws}</b> L:<b style="color:#cc4444">${S.challH2h.oppWins}</b></div></div>`:''}
     </div>
     <p style="margin:0 0 7px;color:#bab9b8;font-size:.83rem">You play as:</p>
     <div style="display:flex;gap:5px;margin-bottom:1rem">
       <button onclick="W.cColor('w')" style="flex:1;padding:7px;border-radius:6px;border:2px solid ${S.challColor==='w'?'#759900':'#3d3a36'};background:${S.challColor==='w'?'#2a3a00':'#161512'};color:${S.challColor==='w'?'#a8c000':'#bab9b8'};cursor:pointer;font-weight:600;font-size:.8rem">White ♔</button>
-      <button onclick="W.cColor('r')" style="flex:1;padding:7px;border-radius:6px;border:2px solid ${S.challColor==='r'?'#759900':'#3d3a36'};background:${S.challColor==='r'?'#2a3a00':'#161512'};color:${S.challColor==='r'?'#a8c000':'#bab9b8'};cursor:pointer;font-weight:600;font-size:.8rem">🎲 Random</button>
+      <button onclick="W.cColor('r')" style="flex:1;padding:7px;border-radius:6px;border:2px solid ${S.challColor==='r'?'#759900':'#3d3a36'};background:${S.challColor==='r'?'#2a3a00':'#161512'};color:${S.challColor==='r'?'#a8c000':'#bab9b8'};cursor:pointer;font-weight:600;font-size:.8rem">Random</button>
       <button onclick="W.cColor('b')" style="flex:1;padding:7px;border-radius:6px;border:2px solid ${S.challColor==='b'?'#759900':'#3d3a36'};background:${S.challColor==='b'?'#2a3a00':'#161512'};color:${S.challColor==='b'?'#a8c000':'#bab9b8'};cursor:pointer;font-weight:600;font-size:.8rem">Black ♚</button>
     </div>
     <button onclick="W.toggleAuto()" style="width:100%;padding:9px;border-radius:6px;font-weight:700;font-size:.88rem;margin-bottom:12px;border:2px solid ${S.autoTime?'#759900':'#3d3a36'};background:${S.autoTime?'#2a3a00':'#161512'};color:${S.autoTime?'#a8c000':'#bab9b8'};cursor:pointer">
-      ⚡ Auto (ELO handicap)${S.autoTime?` — ♔${fs(S.wTimeSec)} | ♚${fs(S.bTimeSec)}`:''}
+      Auto (ELO handicap)${S.autoTime?` — ♔${fs(S.wTimeSec)} | ♚${fs(S.bTimeSec)}`:''}
     </button>
     <div ${dis}>${tcHtml('w',S.wTimeSec)}${tcHtml('b',S.bTimeSec)}</div>
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -564,10 +563,9 @@ let queueTimer=null,queueBeat=null,queueUnsub=null;
 function queueHtml(){
   const waited=Math.floor((Date.now()-S.queueSince)/1000);
   return`<div style="text-align:center;padding:10px 0 4px">
-    <div style="font-size:1.6rem;margin-bottom:6px">⏳</div>
     <div style="color:#f0ede8;font-weight:600;font-size:.95rem">Looking for an opponent…</div>
     <div style="color:#6b6a69;font-size:.8rem;margin-top:4px">${S.queueMode==='ranked'?'Ranked':'Casual'} · waiting ${waited}s</div>
-    <div style="color:#4a4845;font-size:.76rem;margin-top:8px">${S.queueNote||'Real players first — a bot will step in if nobody is around.'}</div>
+    <div style="color:#4a4845;font-size:.76rem;margin-top:8px">${S.queueNote||'Pairing you with someone near your rating.'}</div>
     <button onclick="W.cancelQueue()" class="btn-o" style="margin-top:12px;padding:7px 18px">Cancel</button>
   </div>`;
 }
@@ -589,7 +587,7 @@ W.startQueue=async mode=>{
   queueTimer=setTimeout(()=>{if(S.queueMode===mode)startQueueBotGame(mode);},BOT_FALLBACK_MS);
   let queueOk=true;
   try{await fSet(`queue/${mode}/${me}`,{elo:myElo,ts:Date.now()});}
-  catch{queueOk=false;S.queueNote='Could not reach the matchmaking queue — finding you a bot.';render();}
+  catch{queueOk=false;render();}  // queue unavailable: the fallback below still runs
   if(!queueOk)return;
 
   // Keep the entry fresh so others can tell we are still here, and keep the
@@ -981,7 +979,7 @@ function gameHtml(){
   const sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',draw_stalemate:'Draw — stalemate!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — resign!',resigned_black:'White wins — resign!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const clk=(n,elo,ms,act,me,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:7px"><img src="${pi(me?(myC==='w'?'K':'k'):(myC==='w'?'k':'K'))}" style="width:20px;height:20px;opacity:.7"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}${me?' (you)':''}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span>${me&&premove?.to?`<span style="font-size:.7rem;color:#7da0c0">pre</span>`:''}</div><span id="${id}" style="font-size:${ms<15000?'1.45rem':'1.6rem'};font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
   const promoHtml=promo?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:200"><div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;text-align:center;border:1px solid #2a2927"><p style="margin:0 0 1rem;color:#bab9b8;font-size:.9rem">Promotion:</p><div style="display:flex;gap:8px">${['q','r','b','n'].map(p=>`<button onclick="W.promo('${p}')" style="width:68px;height:68px;border-radius:8px;border:2px solid #3d3a36;background:#161512;cursor:pointer;padding:6px"><img src="${pi(myC==='w'?p.toUpperCase():p)}" style="width:100%;height:100%"></button>`).join('')}</div></div></div>`:'';
-  const overHtml=fin?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;justify-content:center;align-items:center;z-index:100"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;text-align:center;max-width:300px;margin:1rem;border:1px solid #3d3a36;box-shadow:0 8px 40px rgba(0,0,0,.8)"><div style="font-size:3rem;margin-bottom:1rem">${(['white_wins','black_timeout','resigned_black'].includes(gs.status))?'♔':(['black_wins','white_timeout','resigned_white'].includes(gs.status))?'♚':'🤝'}</div><h2 style="margin:0 0 8px;color:#f0ede8;font-size:1.1rem">${sm()}</h2><p style="color:#6b6a69;margin:0 0 1.5rem;font-size:.85rem">Game over</p><button onclick="W.leave()" class="btn-g" style="padding:.7rem 2rem;width:100%">← Back to Lobby</button></div></div>`:'';
+  const overHtml=fin?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;justify-content:center;align-items:center;z-index:100"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;text-align:center;max-width:300px;margin:1rem;border:1px solid #3d3a36;box-shadow:0 8px 40px rgba(0,0,0,.8)"><div style="font-size:3rem;margin-bottom:1rem">${(['white_wins','black_timeout','resigned_black'].includes(gs.status))?'♔':(['black_wins','white_timeout','resigned_white'].includes(gs.status))?'♚':'½'}</div><h2 style="margin:0 0 8px;color:#f0ede8;font-size:1.1rem">${sm()}</h2><p style="color:#6b6a69;margin:0 0 1.5rem;font-size:.85rem">Game over</p><button onclick="W.leave()" class="btn-g" style="padding:.7rem 2rem;width:100%">← Back to Lobby</button></div></div>`:'';
   return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:${gs.status==='check'?'#c8a400':'#6b6a69'};font-weight:600;font-size:.82rem">${sm()}</span><div style="display:flex;gap:6px">${!fin?`<button onclick="W.resign()" style="padding:5px 12px;border-radius:5px;border:1px solid #882020;background:transparent;color:#cc4444;cursor:pointer;font-size:.78rem">Resign</button>`:''}${fin?`<button onclick="W.leave()" class="btn-g" style="padding:5px 12px;font-size:.8rem">← Lobby</button>`:''}</div></div>
   ${clk(oppN,oppElo,oppMs,oppA,false,'co')}
@@ -998,7 +996,7 @@ function spectateHtml(){
   const fin=TERM.includes(gs.status),sm=()=>({white_wins:'White wins!',black_wins:'Black wins!',draw_stalemate:'Draw!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const wE=S.allPlayers[g.white]?.elo||1000,bE=S.allPlayers[g.black]?.elo||1000;
   const clk=(n,elo,ms,act,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span></div><span id="${id}" style="font-size:1.6rem;font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
-  return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box"><div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:#6b6a69;font-weight:600;font-size:.82rem">👁 Watching — ${sm()}</span><button onclick="W.leaveSpec()" class="btn-o" style="padding:5px 12px;font-size:.78rem">← Lobby</button></div>
+  return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box"><div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:#6b6a69;font-weight:600;font-size:.82rem">Watching — ${sm()}</span><button onclick="W.leaveSpec()" class="btn-o" style="padding:5px 12px;font-size:.78rem">← Lobby</button></div>
   ${clk(g.black,bE,dMs.b,gs.turn==='b'&&!fin,'sco')}
   <div style="width:min(calc(100vw - 20px),calc(100svh - 210px));aspect-ratio:1;margin:0 auto;flex-shrink:0">${boardHtml(gs,null,[],null,'w',true)}</div>
   ${clk(g.white,wE,dMs.w,gs.turn==='w'&&!fin,'scw')}</div>`;

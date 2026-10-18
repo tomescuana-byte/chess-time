@@ -44,7 +44,7 @@ async function finalizeBotGame(game,gid,me){
   const pChg=rated?eloChg(pE,botEloVal,pScore,myMs,oppMs):0;
   const nPE=pE+pChg,ts=Date.now();
   if(rated){
-    await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg});
+    await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Unknown',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg});
     const botName=game.botName;
     if(botName){
       const botCurElo=(await readElo(botName))??botEloVal;
