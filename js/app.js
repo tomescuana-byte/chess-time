@@ -170,6 +170,15 @@ async function ensurePlayer(name,uid){
   else if(p.uid!==uid)await fUpdate(`players/${name}`,{uid});
   const lb=await fGet(`leaderboard/${name}`);
   if(!lb)await fSet(`leaderboard/${name}`,{elo:p?.elo??START_ELO,isBot:false});
+  // Move an old inline rating history across before dropping it — a player's
+  // ELO curve is the one thing here that cannot be reconstructed.
+  if(p&&Array.isArray(p.eloHistory)&&p.eloHistory.length){
+    const existing=await fGet(`history/${name}`);
+    if(!existing)for(const e of p.eloHistory)await fPush(`history/${name}`,e);
+  }
+  // Then drop the copies left on the old record, so `players` stays small and
+  // there is only one source of truth for a rating.
+  if(p&&(p.elo!==undefined||p.eloHistory!==undefined))await fUpdate(`players/${name}`,{elo:null,eloHistory:null});
 }
 
 // Claims a username for a uid. Returns '' on success, or an error message.
@@ -536,7 +545,9 @@ W.deleteAccount=async()=>{
 function profileHtml(){
   const name=S.profileTarget,pd=S.profileData;
   const myElo=pd?.elo||1000;
-  const allP=Object.entries(S.allPlayers).sort((a,b)=>b[1].elo-a[1].elo);
+  // Rank against the same list the lobby shows — bots that have not played yet
+  // only exist in the roster, so they must be merged in or they rank nowhere.
+  const allP=Object.entries({...getBotPlayers(),...S.allPlayers}).sort((a,b)=>(b[1].elo||0)-(a[1].elo||0));
   const rank=allP.findIndex(([k])=>k===name)+1;
   const isMe=name===S.user;
   if(!pd)return`<div style="max-width:560px;margin:0 auto;padding:1rem"><button onclick="W.backLobby()" class="btn-o" style="margin-bottom:1rem">← Lobby</button><div style="text-align:center;padding:3rem;color:#6b6a69">Loading...</div></div>`;
