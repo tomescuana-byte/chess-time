@@ -1,5 +1,6 @@
 import{fSet,fGet,fPush,fUpdate,fClaim}from'./firebase.js';
 import{h2hKey}from'./utils.js';
+import{calcAutoTime,applyAutoTime,eloChg}from'./rating.js';
 
 /* ── Where a rating lives ──────────────────────────────────────────────────
    leaderboard/{name} = { elo, isBot }   small, and every client subscribes to it
@@ -14,10 +15,6 @@ async function writeRating(name,elo,isBot,entry){
   await fPush(`history/${name}`,entry);
 }
 
-function calcAutoTime(eloA,eloB){const BASE=180,STEP=15,STEP_ELO=50,MIN_S=60,MAX_W=600;const diff=Math.abs(eloA-eloB),steps=Math.floor(diff/STEP_ELO);if(steps===0)return{strongerSec:BASE,weakerSec:BASE};const ph1=Math.floor((BASE-MIN_S)/STEP),s1=Math.min(steps,ph1);return{strongerSec:BASE-s1*STEP,weakerSec:Math.min(MAX_W,BASE+(steps-s1)*STEP)};}
-function applyAutoTime(myElo,oppElo){const{strongerSec,weakerSec}=calcAutoTime(myElo,oppElo);const strong=myElo>=oppElo;return{mySec:strong?strongerSec:weakerSec,oppSec:strong?weakerSec:strongerSec};}
-
-function eloChg(myE,oppE,score,myMs,oppMs){const exp=1/(1+Math.pow(10,(oppE-myE)/400));return Math.round(Math.round(32*Math.min(4,Math.max(0.5,oppMs/myMs)))*(score-exp));}
 
 /* Settles a human-vs-bot game: both the player's and the bot's rating are written.
    `me` is the human playing it, passed in rather than read from UI state so this
