@@ -38,16 +38,21 @@ async function finalizeBotGame(game,gid,me){
   const pE=(await readElo(playerName))??1000;
   const iWMs=game.initWhiteMs||game.whiteMs,iBMs=game.initBlackMs||game.blackMs;
   const myMs=playerColor==='w'?iWMs:iBMs,oppMs=playerColor==='w'?iBMs:iWMs;
-  const pChg=eloChg(pE,botEloVal,pScore,myMs,oppMs);
+  // Casual games and direct challenges are played for their own sake: the result
+  // is recorded, the ratings do not move.
+  const rated=game.rated!==false;
+  const pChg=rated?eloChg(pE,botEloVal,pScore,myMs,oppMs):0;
   const nPE=pE+pChg,ts=Date.now();
-  await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg});
-  const botName=game.botName;
-  if(botName){
-    const botCurElo=(await readElo(botName))??botEloVal;
-    const botScore=1-pScore;
-    const botChg=eloChg(botCurElo,pE,botScore,oppMs,myMs);
-    const nBotE=Math.max(100,botCurElo+botChg);
-    await writeRating(botName,nBotE,true,{elo:nBotE,ts,gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg});
+  if(rated){
+    await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg});
+    const botName=game.botName;
+    if(botName){
+      const botCurElo=(await readElo(botName))??botEloVal;
+      const botScore=1-pScore;
+      const botChg=eloChg(botCurElo,pE,botScore,oppMs,myMs);
+      const nBotE=Math.max(100,botCurElo+botChg);
+      await writeRating(botName,nBotE,true,{elo:nBotE,ts,gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg});
+    }
   }
   const wScore=playerColor==='w'?pScore:(1-pScore),bScore=playerColor==='b'?pScore:(1-pScore);
   const rec={gid,white:game.white,black:game.black,wScore,bScore,wEloDelta:playerColor==='w'?pChg:0,bEloDelta:playerColor==='b'?pChg:0,ts:Date.now(),initWhiteMs:iWMs,initBlackMs:iBMs};
@@ -68,9 +73,10 @@ async function finalizeGame(game,gid,me){
   const[wE0,bE0]=await Promise.all([readElo(game.white),readElo(game.black)]);
   const wE=wE0??1000,bE=bE0??1000;
   const iW=game.initWhiteMs||game.whiteMs,iB=game.initBlackMs||game.blackMs;
-  const wC=eloChg(wE,bE,wSc,iW,iB),bC=eloChg(bE,wE,bSc,iB,iW);
+  const rated=game.rated!==false;
+  const wC=rated?eloChg(wE,bE,wSc,iW,iB):0,bC=rated?eloChg(bE,wE,bSc,iB,iW):0;
   const ts=Date.now(),nwE=wE+wC,nbE=bE+bC;
-  await Promise.all([
+  if(rated)await Promise.all([
     writeRating(game.white,nwE,false,{elo:nwE,ts,gameId:gid,opponent:game.black,result:wSc===1?'win':wSc===0?'loss':'draw',eloDelta:wC}),
     writeRating(game.black,nbE,false,{elo:nbE,ts,gameId:gid,opponent:game.white,result:bSc===1?'win':bSc===0?'loss':'draw',eloDelta:bC})
   ]);

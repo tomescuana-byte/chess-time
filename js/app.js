@@ -76,6 +76,7 @@ const S={
   allPlayers:{},presence:{},
   inChalls:[],outChall:null,
   challDlg:false,challTarget:'',challColor:'r',wTimeSec:180,bTimeSec:180,challH2h:null,autoTime:false,challMsg:'',
+  search:'',queueMode:null,queueSince:0,queueNote:'',lastScreen:'home',
   sort:'elo',
   chatMsgs:[],
   gid:null,gInfo:null,gs:null,sel:null,lMv:[],promo:null,premove:null,
@@ -92,22 +93,28 @@ function render(){
   const ci=document.getElementById('chat-in');
   const chatVal=ci?ci.value:'';
   const chatFocus=document.activeElement===ci;
+  const searchFocus=document.activeElement===document.getElementById('srch');
 
   const el=document.getElementById('app');if(!el)return;
   if(S.screen==='boot')el.innerHTML=bootHtml();
   else if(S.screen==='auth')el.innerHTML=authHtml();
   else if(S.screen==='pickname')el.innerHTML=pickNameHtml();
+  else if(S.screen==='home')el.innerHTML=homeHtml();
   else if(S.screen==='lobby')el.innerHTML=lobbyHtml();
   else if(S.screen==='game')el.innerHTML=gameHtml();
   else if(S.screen==='spectate')el.innerHTML=spectateHtml();
   else if(S.screen==='profile')el.innerHTML=profileHtml();
 
-  // Restore chat input
-  if(S.screen==='lobby'){
+  // Restore chat input and the search box — both live on screens that re-render
+  // on every presence heartbeat, so a typed value would otherwise vanish.
+  if(S.screen==='home'){
     const nci=document.getElementById('chat-in');
     if(nci&&chatVal){nci.value=chatVal;if(chatFocus){nci.focus();nci.setSelectionRange(chatVal.length,chatVal.length);}}
-    // Scroll messages to bottom
     const msgs=document.getElementById('chat-msgs');if(msgs)msgs.scrollTop=msgs.scrollHeight;
+  }
+  if(S.screen==='lobby'&&searchFocus){
+    const si=document.getElementById('srch');
+    if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}
   }
 }
 
@@ -314,25 +321,25 @@ async function resolveUser(fbUser){
 
 /* ═══ LOBBY ═══ */
 function startLobby(){
-  S.screen='lobby';S.gid=null;S.gInfo=null;S.gs=null;S.outChall=null;S.inChalls=[];S.premove=null;S.profileTarget=null;
+  S.screen='home';S.gid=null;S.gInfo=null;S.gs=null;S.outChall=null;S.inChalls=[];S.premove=null;S.profileTarget=null;
   clearInterval(hbId);
   const beat=()=>fSet(`presence/${S.user}`,{ts:Date.now(),status:'online'});
   beat();hbId=setInterval(beat,5000);
   unsub();
-  const u1=fOn('presence',d=>{S.presence=d||{};if(S.screen==='lobby')render();});
+  const u1=fOn('presence',d=>{S.presence=d||{};if(onBoard())render();});
   // Subscribe to ratings only — never to the whole players tree, which would
   // re-download every profile and every ELO history on each rating change.
-  const u2=fOn('leaderboard',d=>{S.allPlayers=d||{};if(S.screen==='lobby')render();});
+  const u2=fOn('leaderboard',d=>{S.allPlayers=d||{};if(onBoard())render();});
   const u3=fOn('challenges',d=>{
-    if(!d){S.inChalls=[];if(S.screen==='lobby')render();return;}
+    if(!d){S.inChalls=[];if(onBoard())render();return;}
     const mine=[];
     for(const[id,ch]of Object.entries(d)){
       if(!ch)continue;
       if(ch.to===S.user&&ch.status==='pending')mine.push({...ch,id});
       if(ch.from===S.user&&ch.status==='accepted'&&ch.gameId&&!ch.joined){fSet(`challenges/${id}`,{...ch,joined:true});S.outChall=null;fGet(`games/${ch.gameId}`).then(g=>{if(g)enterGame(ch.gameId,g);});return;}
-      if(ch.from===S.user&&ch.status==='declined'){fSet(`challenges/${id}`,{...ch,status:'closed'});S.outChall=null;if(S.screen==='lobby')render();}
+      if(ch.from===S.user&&ch.status==='declined'){fSet(`challenges/${id}`,{...ch,status:'closed'});S.outChall=null;if(onBoard())render();}
     }
-    S.inChalls=mine;if(S.screen==='lobby')render();
+    S.inChalls=mine;if(onBoard())render();
   });
   // Chat: ONLY updates the messages div, never touches the input
   const u4=fOn('chat',d=>{
@@ -343,20 +350,137 @@ function startLobby(){
   render();
 }
 
+// The two screens showing live player data, and so the ones worth re-rendering
+// when presence, ratings or challenges change underneath.
+const onBoard=()=>S.screen==='home'||S.screen==='lobby';
 function pStatus(n){const now=Date.now(),p=S.presence[n];if(!p||now-p.ts>15000)return'inactive';return p.status||'online';}
 function pGameId(n){return S.presence[n]?.gameId||null;}
 
-function lobbyHtml(){
-  const botPlrs=getBotPlayers();
+/* One list, built the same way everywhere: real players from the leaderboard,
+   plus every bot from the roster (a bot has no leaderboard row until it plays). */
+function allEntries(){
   const botNames=new Set(BOT_NAMES);
-  const botList=Object.entries(botPlrs).map(([k,v])=>({name:k,elo:S.allPlayers[k]?.elo??v.elo??1000,status:'online',gameId:null,isBot:true}));
-  // exclude bots from the real-player list to avoid duplicates
-  let pl=[...Object.entries(S.allPlayers).filter(([k])=>!botNames.has(k)).map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k)})),...botList];
+  const bots=Object.entries(getBotPlayers()).map(([k,v])=>({name:k,elo:S.allPlayers[k]?.elo??v.elo,status:'online',gameId:null,isBot:true}));
+  const humans=Object.entries(S.allPlayers).filter(([k])=>!botNames.has(k))
+    .map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k),isBot:false}));
+  return[...humans,...bots];
+}
+const myEloNow=()=>S.allPlayers[S.user]?.elo||1000;
+
+function countsHtml(){
+  const humans=allEntries().filter(p=>!p.isBot);
+  const online=humans.filter(p=>p.status!=='inactive').length;
+  return`<div style="text-align:center;color:#6b6a69;font-size:.78rem;padding:14px 0 6px">
+    <b style="color:#bab9b8">${humans.length}</b> player${humans.length===1?'':'s'} registered
+    · <b style="color:#759900">${online}</b> online now
+    · <span style="color:#4a4845">${BOT_NAMES.length} bots</span>
+  </div>`;
+}
+
+function homeHtml(){
+  const myElo=myEloNow();
+  const all=allEntries().sort((a,b)=>b.elo-a.elo);
+  const myRank=all.findIndex(p=>p.name===S.user)+1;
+
+  // A concrete example beats an explanation: show the clocks against the top bot.
+  const top=all[0];
+  const ex=top?applyAutoTime(myElo,top.elo):null;
+
+  const left=`<div class="card" style="padding:16px">
+    <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:10px">Chess with time odds</h2>
+    <p style="font-size:.84rem;line-height:1.6;color:#bab9b8;margin-bottom:10px">
+      In ordinary chess a 1200 has no realistic chance against an 1800. Here the
+      clock evens it out: the stronger player gets less time to think.</p>
+    <div style="background:#161512;border-radius:8px;padding:10px;margin-bottom:10px;font-size:.8rem;line-height:1.9;color:#bab9b8">
+      <div>Equal ratings → <b style="color:#a8c000">3:00</b> each</div>
+      <div>Every 50 rating points → <b style="color:#a8c000">15 seconds</b></div>
+      <div>The stronger player drops to <b style="color:#a8c000">1:00</b> at most</div>
+      <div>The weaker one climbs to <b style="color:#a8c000">10:00</b> at most</div>
+    </div>
+    ${ex?`<p style="font-size:.8rem;color:#6b6a69;line-height:1.6">
+      At your rating of <b style="color:#c8a400">${myElo}</b>, a game against
+      <b style="color:#f0ede8">${esc(top.name)}</b> (${top.elo}) would give you
+      <b style="color:#a8c000">${fs(ex.mySec)}</b> against their
+      <b style="color:#a8c000">${fs(ex.oppSec)}</b>.</p>`:''}
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 8px;font-size:.85rem;color:#6b6a69">💬 Chat</h3>
+    <div id="chat-msgs" style="height:140px;overflow-y:auto;margin-bottom:8px">${chatMsgsHtml()}</div>
+    <div style="display:flex;gap:6px">
+      <input type="text" id="chat-in" placeholder="Message..." maxlength="200" onkeydown="if(event.key==='Enter'){W.sendChat();event.preventDefault();}" style="flex:1;padding:8px 10px;font-size:.9rem">
+      <button onclick="W.sendChat()" class="btn-g" style="padding:8px 14px;font-size:.9rem">→</button>
+    </div>
+  </div>`;
+
+  const mid=`<div class="card" style="padding:16px">
+    <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:12px">Play</h2>
+    ${S.queueMode?queueHtml():`
+    <button class="play-btn primary" onclick="W.startQueue('ranked')">
+      <b>⚔ Ranked</b><span>Random opponent near your rating. Clocks and colour set automatically. Counts towards the leaderboard.</span></button>
+    <button class="play-btn" onclick="W.startQueue('casual')">
+      <b>🎲 Casual</b><span>Same game, same handicap — your rating does not move. For practice.</span></button>
+    <button class="play-btn" onclick="W.openLobby()">
+      <b>🎯 Challenge a player</b><span>Pick who you play and set the clocks yourself. Does not affect the leaderboard.</span></button>`}
+    ${S.challMsg?`<div style="margin-top:4px;border-left:3px solid #cc4444;background:#161512;border-radius:6px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="color:#cc4444;font-size:.84rem">${esc(S.challMsg)}</span><button onclick="W.dismissMsg()" class="btn-o" style="padding:3px 9px;font-size:.76rem">OK</button></div>`:''}
+  </div>
+  ${inChallsHtml()}`;
+
+  const top10=all.slice(0,10).map((p,i)=>`<div class="lb-row">
+      <span style="color:${i<3?'#c8a400':'#6b6a69'};font-size:.76rem;min-width:18px;font-weight:${i<3?'700':'400'}">#${i+1}</span>
+      <button onclick="W.openProf('${esc(p.name)}')" style="flex:1;text-align:left;background:none;border:none;padding:0;color:${p.name===S.user?'#a8c000':'#f0ede8'};font-weight:600;font-size:.86rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</button>
+      <span style="color:#c8a400;font-size:.82rem;font-weight:600">${p.elo}</span>
+    </div>`).join('');
+
+  const right=`<div class="card" style="padding:14px">
+    <h2 style="font-size:1rem;color:#f0ede8;margin-bottom:10px">🏆 Top 10</h2>
+    ${top10||'<p style="color:#3d3a36;font-size:.85rem;text-align:center;padding:1rem">No players yet</p>'}
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a2927;font-size:.78rem;color:#6b6a69">
+      You are <b style="color:#f0ede8">#${myRank||'—'}</b> of ${all.length}
+    </div>
+  </div>`;
+
+  return`<div style="padding:.75rem">
+  ${headerHtml(myElo,myRank)}
+  <div class="panels">
+    <div>${left}</div>
+    <div class="p-play">${mid}</div>
+    <div>${right}</div>
+  </div>
+  ${countsHtml()}
+  </div>`;
+}
+
+function headerHtml(myElo,myRank){
+  return`<div style="max-width:1180px;margin:0 auto 12px;display:flex;justify-content:space-between;align-items:center;padding-top:.25rem">
+    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">♟ Blitz Odds</h1>
+    <p style="font-size:.78rem"><button onclick="W.openProf('${esc(S.user)}')" style="background:none;border:none;padding:0;color:#759900;font-weight:700;cursor:pointer;text-decoration:underline;font-size:.78rem">${esc(S.user)}</button> <span style="color:#c8a400">ELO ${myElo}</span> <span style="color:#6b6a69">#${myRank||'—'}</span></p></div>
+    <button onclick="W.logout()" class="btn-o" style="padding:5px 12px;font-size:.82rem">Logout</button>
+  </div>`;
+}
+
+function inChallsHtml(){
+  if(!S.inChalls.length)return'';
+  return`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">⚔ Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`;
+}
+
+/* Search accepts either a name fragment or a rating: a bare number means "around
+   this rating" (±150), and `1200-1600` means a range. */
+function matchesSearch(p,q){
+  if(!q)return true;
+  const range=q.match(/^(\d{2,4})\s*-\s*(\d{2,4})$/);
+  if(range)return p.elo>=+range[1]&&p.elo<=+range[2];
+  if(/^\d{2,4}$/.test(q)){const n=+q;return Math.abs(p.elo-n)<=150;}
+  return p.name.toLowerCase().includes(q.toLowerCase());
+}
+
+function lobbyHtml(){
+  const q=(S.search||'').trim();
+  let pl=allEntries().filter(p=>matchesSearch(p,q));
   if(S.sort==='elo')pl.sort((a,b)=>b.elo-a.elo);else pl.sort((a,b)=>a.name.localeCompare(b.name));
-  const myElo=S.allPlayers[S.user]?.elo||1000;
+  const myElo=myEloNow();
   const myRank=pl.findIndex(p=>p.name===S.user)+1;
   const dot=s=>`<span style="width:8px;height:8px;border-radius:50%;background:${s==='online'?'#759900':s==='ingame'?'#cc4444':'#3d3a36'};display:inline-block;flex-shrink:0"></span>`;
-  const inC=S.inChalls.length?`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">⚔ Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`:'';
+  const inC=inChallsHtml();
   const outC=S.outChall?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #c8a400;display:flex;justify-content:space-between;align-items:center"><span style="color:#c8a400;font-size:.88rem">⏳ Sent to <b>${esc(S.outChall.to)}</b>...</span><button onclick="W.cancelC()" class="btn-o" style="padding:4px 10px;font-size:.78rem">Cancel</button></div>`:'';
   const msgC=S.challMsg?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #cc4444;display:flex;justify-content:space-between;align-items:center"><span style="color:#cc4444;font-size:.88rem">${esc(S.challMsg)}</span><button onclick="W.dismissMsg()" class="btn-o" style="padding:4px 10px;font-size:.78rem">OK</button></div>`:'';
   const rows=pl.map((p,i)=>{
@@ -379,26 +503,19 @@ function lobbyHtml(){
   }).join('');
 
   const dlg=challDlgHtml(myElo);
-  return`<div style="max-width:560px;margin:0 auto;padding:.75rem">
+  return`<div style="max-width:620px;margin:0 auto;padding:.75rem">
   <div style="display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;margin-bottom:1rem">
-    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">♟ Lobby</h1>
-    <p style="font-size:.78rem"><button onclick="W.openProf('${esc(S.user)}')" style="background:none;border:none;padding:0;color:#759900;font-weight:700;cursor:pointer;text-decoration:underline;font-size:.78rem">${esc(S.user)}</button> <span style="color:#c8a400">ELO ${myElo}</span> <span style="color:#6b6a69">#${myRank}</span></p></div>
-    <div style="display:flex;gap:5px;align-items:center">
-      <button onclick="W.sort('elo')" class="sort-btn${S.sort==='elo'?' active':''}">ELO</button>
-      <button onclick="W.sort('alpha')" class="sort-btn${S.sort==='alpha'?' active':''}">A-Z</button>
-      <button onclick="W.logout()" class="btn-o" style="padding:5px 12px;font-size:.82rem">Logout</button>
-    </div>
+    <div><h1 style="font-size:1.2rem;font-weight:700;color:#f0ede8">🎯 Challenge a player</h1>
+    <p style="font-size:.78rem"><span style="color:#c8a400">ELO ${myElo}</span> <span style="color:#6b6a69">#${myRank||'—'}</span></p></div>
+    <button onclick="W.goHome()" class="btn-o" style="padding:5px 12px;font-size:.82rem">← Back</button>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:10px">
+    <input type="text" id="srch" placeholder="Search by name, or rating (1500, or 1200-1600)" value="${esc(S.search||'')}" oninput="W.search(this.value)" style="flex:1;padding:9px 11px;font-size:.88rem">
+    <button onclick="W.sort('elo')" class="sort-btn${S.sort==='elo'?' active':''}">ELO</button>
+    <button onclick="W.sort('alpha')" class="sort-btn${S.sort==='alpha'?' active':''}">A-Z</button>
   </div>
   ${inC}${outC}${msgC}
-  <div class="card" style="padding:10px"><h3 style="margin:0 0 8px;font-size:.82rem;color:#6b6a69">Leaderboard (${pl.length})</h3>${rows}</div>
-  <div class="card">
-    <h3 style="margin:0 0 8px;font-size:.85rem;color:#6b6a69">💬 Chat</h3>
-    <div id="chat-msgs" style="height:150px;overflow-y:auto;margin-bottom:8px">${chatMsgsHtml()}</div>
-    <div style="display:flex;gap:6px">
-      <input type="text" id="chat-in" placeholder="Message..." maxlength="200" onkeydown="if(event.key==='Enter'){W.sendChat();event.preventDefault();}" style="flex:1;padding:8px 10px;font-size:.9rem">
-      <button onclick="W.sendChat()" class="btn-g" style="padding:8px 14px;font-size:.9rem">→</button>
-    </div>
-  </div>
+  <div class="card" style="padding:10px"><h3 style="margin:0 0 8px;font-size:.82rem;color:#6b6a69">${S.search?`${pl.length} match${pl.length===1?'':'es'}`:`Players (${pl.length})`}</h3>${rows||'<p style="color:#3d3a36;text-align:center;padding:1.5rem;font-size:.85rem">Nobody matches that search</p>'}</div>
 </div>${dlg}`;
 }
 
@@ -432,6 +549,112 @@ function challDlgHtml(myElo){
 }
 
 W.sort=s=>{S.sort=s;render();};
+W.search=v=>{S.search=v;render();};
+
+/* ═══ MATCHMAKING ═══
+   queue/{mode}/{username} = { elo, ts, matched? }
+   Real players come first: we wait in the queue, and only when nobody turns up
+   does a bot step in — so the app is never empty for the first person through
+   the door, but a human always wins the race. Set BOT_FALLBACK_MS higher (or
+   disable it) once there are enough real players. */
+const BOT_FALLBACK_MS=20000;
+const QUEUE_FRESH_MS=15000;
+let queueTimer=null,queueBeat=null,queueUnsub=null;
+
+function queueHtml(){
+  const waited=Math.floor((Date.now()-S.queueSince)/1000);
+  return`<div style="text-align:center;padding:10px 0 4px">
+    <div style="font-size:1.6rem;margin-bottom:6px">⏳</div>
+    <div style="color:#f0ede8;font-weight:600;font-size:.95rem">Looking for an opponent…</div>
+    <div style="color:#6b6a69;font-size:.8rem;margin-top:4px">${S.queueMode==='ranked'?'Ranked':'Casual'} · waiting ${waited}s</div>
+    <div style="color:#4a4845;font-size:.76rem;margin-top:8px">${S.queueNote||'Real players first — a bot will step in if nobody is around.'}</div>
+    <button onclick="W.cancelQueue()" class="btn-o" style="margin-top:12px;padding:7px 18px">Cancel</button>
+  </div>`;
+}
+
+function leaveQueue(){
+  clearTimeout(queueTimer);clearInterval(queueBeat);
+  queueTimer=null;queueBeat=null;
+  if(queueUnsub){try{queueUnsub()}catch{};queueUnsub=null;}
+  const m=S.queueMode;S.queueMode=null;S.queueNote='';
+  if(m&&S.user)fSet(`queue/${m}/${S.user}`,null);
+}
+
+W.startQueue=async mode=>{
+  if(S.queueMode)return;
+  S.queueMode=mode;S.queueSince=Date.now();S.queueNote='';S.challMsg='';render();
+  const me=S.user,myElo=myEloNow();
+  // The fallback timer is armed first: if the queue itself is unavailable the
+  // player still gets a game instead of waiting on a spinner forever.
+  queueTimer=setTimeout(()=>{if(S.queueMode===mode)startQueueBotGame(mode);},BOT_FALLBACK_MS);
+  let queueOk=true;
+  try{await fSet(`queue/${mode}/${me}`,{elo:myElo,ts:Date.now()});}
+  catch{queueOk=false;S.queueNote='Could not reach the matchmaking queue — finding you a bot.';render();}
+  if(!queueOk)return;
+
+  // Keep the entry fresh so others can tell we are still here, and keep the
+  // "waiting Ns" counter ticking.
+  queueBeat=setInterval(()=>{
+    if(!S.queueMode)return;
+    fSet(`queue/${mode}/${me}`,{elo:myEloNow(),ts:Date.now()}).catch(()=>{});
+    if(S.screen==='home')render();
+  },4000);
+
+  queueUnsub=fOn(`queue/${mode}`,async d=>{
+    if(!S.queueMode||S.screen==='game')return;
+    const mine=d?.[me];
+    // Someone else paired with us and created the game.
+    if(mine?.matched){const g=await fGet(`games/${mine.matched}`);if(g){const gid=mine.matched;leaveQueue();enterGame(gid,g);}return;}
+    const now=Date.now();
+    const others=Object.entries(d||{})
+      .filter(([n,v])=>n!==me&&v&&!v.matched&&now-v.ts<QUEUE_FRESH_MS)
+      .sort((a,b)=>Math.abs(a[1].elo-myElo)-Math.abs(b[1].elo-myElo));
+    if(!others.length)return;
+    const[oppName,opp]=others[0];
+    // Both sides see the same queue; the lower name creates the game so we never
+    // end up with two games for one pairing.
+    if(me>oppName)return;
+    const gid=`${me}_${oppName}_${Date.now()}`;
+    const iAmWhite=Math.random()<0.5;
+    const{mySec,oppSec}=applyAutoTime(myElo,opp.elo);
+    const wMs=(iAmWhite?mySec:oppSec)*1000,bMs=(iAmWhite?oppSec:mySec)*1000;
+    const game={white:iAmWhite?me:oppName,black:iAmWhite?oppName:me,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,
+      lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},
+      enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated:S.queueMode==='ranked'};
+    await fSet(`games/${gid}`,game);
+    await fSet(`queue/${mode}/${oppName}`,{...opp,matched:gid});
+    leaveQueue();
+    enterGame(gid,game);
+  });
+
+};
+
+W.cancelQueue=()=>{leaveQueue();render();};
+
+/* Nobody showed up — pair with the bot closest to the player's rating. */
+async function startQueueBotGame(mode){
+  const myElo=myEloNow();
+  const pool=allEntries().filter(p=>p.isBot).sort((a,b)=>Math.abs(a.elo-myElo)-Math.abs(b.elo-myElo));
+  const bot=pool[0];
+  if(!bot){S.queueNote='No opponent available right now.';render();return;}
+  const rated=mode==='ranked';
+  leaveQueue();
+  const iAmWhite=Math.random()<0.5;
+  const{mySec,oppSec}=applyAutoTime(myElo,bot.elo);
+  const wMs=(iAmWhite?mySec:oppSec)*1000,bMs=(iAmWhite?oppSec:mySec)*1000;
+  const botColor=iAmWhite?'b':'w';
+  const depth=botDepth(bot.elo),blunder=botBlunder(bot.elo);
+  const gid=`${S.user}_${bot.name}_${Date.now()}`;
+  const game={white:iAmWhite?S.user:bot.name,black:iAmWhite?bot.name:S.user,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,
+    lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},
+    enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated,
+    isBot:true,botName:bot.name,botColor,botElo:bot.elo,botDepth:depth,botBlunder:blunder};
+  await fSet(`games/${gid}`,game);
+  enterGame(gid,game);
+  startBotGame(gid,bot.name,botColor,bot.elo,depth,blunder);
+}
+W.goHome=()=>{S.screen='home';S.search='';render();};
+W.openLobby=()=>{S.screen='lobby';S.search='';render();};
 W.setT=(w,v)=>{if(S.autoTime)return;if(w==='w')S.wTimeSec=Math.min(600,Math.max(0,+v));else S.bTimeSec=Math.min(600,Math.max(0,+v));render();};
 W.adjT=(w,d)=>{W.setT(w,(w==='w'?S.wTimeSec:S.bTimeSec)+d);};
 W.toggleAuto=()=>{S.autoTime=!S.autoTime;if(S.autoTime){const botPlrsAT=getBotPlayers();const myEloAT=S.allPlayers[S.user]?.elo||1000;const oppEloAT=botPlrsAT[S.challTarget]?botPlrsAT[S.challTarget].elo:(S.allPlayers[S.challTarget]?.elo||1000);const{mySec,oppSec}=applyAutoTime(myEloAT,oppEloAT);const mw=S.challColor==='w';S.wTimeSec=mw?mySec:oppSec;S.bTimeSec=mw?oppSec:mySec;}render();};
@@ -468,7 +691,7 @@ W.send=async()=>{
       S.outChall=null;
       if(!verdict.ok){S.challMsg=`${target} ${verdict.why}`;render();return;}
       const depth=botDepth(botEloVal),blunder=botBlunder(botEloVal);
-      const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,isBot:true,botName:target,botColor,botElo:botEloVal,botDepth:depth,botBlunder:blunder};
+      const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated:false,isBot:true,botName:target,botColor,botElo:botEloVal,botDepth:depth,botBlunder:blunder};
       await fSet(`games/${id}`,game);
       enterGame(id,game);
       startBotGame(id,target,botColor,botEloVal,depth,blunder);
@@ -488,16 +711,16 @@ W.dismissMsg=()=>{S.challMsg='';render();};
 W.accept=async id=>{
   const ch=S.inChalls.find(c=>c.id===id);if(!ch)return;
   const white=ch.challColor==='w'?ch.from:ch.to,black=ch.challColor==='w'?ch.to:ch.from;
-  const game={white,black,whiteMs:ch.whiteMs,blackMs:ch.blackMs,initWhiteMs:ch.whiteMs,initBlackMs:ch.blackMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false};
+  const game={white,black,whiteMs:ch.whiteMs,blackMs:ch.blackMs,initWhiteMs:ch.whiteMs,initBlackMs:ch.blackMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated:false};
   await fSet(`games/${id}`,game);await fSet(`challenges/${id}`,{...ch,status:'accepted',gameId:id});
   enterGame(id,game);
 };
 W.decline=async id=>{const ch=S.inChalls.find(c=>c.id===id);if(ch)await fSet(`challenges/${id}`,{...ch,status:'declined'});};
-W.logout=async()=>{clearInterval(hbId);unsub();if(S.user)await fSet(`presence/${S.user}`,{ts:0,status:'offline'});S.user=null;S.uid=null;try{await signOut(auth);}catch{}S.screen='auth';render();};
+W.logout=async()=>{leaveQueue();clearInterval(hbId);unsub();if(S.user)await fSet(`presence/${S.user}`,{ts:0,status:'offline'});S.user=null;S.uid=null;try{await signOut(auth);}catch{}S.screen='auth';render();};
 
 /* ═══ PROFILE ═══ */
 W.openProf=async name=>{
-  S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();
+  S.lastScreen=S.screen;S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();
   // Identity, recent games and the tail of the rating history — all on demand.
   const[pd,pg,hist]=await Promise.all([fGet(`players/${name}`),fGet(`playerGames/${name}`),fGetLast(`history/${name}`,60)]);
   const bot=BOT_BY_NAME[name];
@@ -512,7 +735,7 @@ W.openProf=async name=>{
 };
 W.profTab=t=>{S.profileTab=t;render();};
 W.saveProf=async()=>{const nat=(document.getElementById('pn')?.value||'').trim().slice(0,50),club=(document.getElementById('pc')?.value||'').trim().slice(0,50);await fUpdate(`players/${S.profileTarget}`,{nationality:nat,club});S.profileData={...S.profileData,nationality:nat,club};render();};
-W.backLobby=()=>{S.screen='lobby';render();};
+W.backLobby=()=>{S.screen=S.lastScreen==='lobby'?'lobby':'home';render();};
 W.deleteAccount=async()=>{
   if(!confirm('Permanently delete your account and all data? This cannot be undone.'))return;
   if(!confirm('Are you sure? All your games, ELO and profile will be deleted forever.'))return;
@@ -600,7 +823,7 @@ function profileHtml(){
 
 /* ═══ GAME ═══ */
 function enterGame(gid,game){
-  clearInterval(hbId);unsub();
+  leaveQueue();clearInterval(hbId);unsub();
   S.gid=gid;S.gInfo=game;
   S.gs={board:JSON.parse(game.boardJson),turn:game.turn,castling:game.castling,enPassant:game.enPassant||null,fullMoves:game.fullMoves,status:game.status};
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';

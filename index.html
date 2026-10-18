@@ -37,6 +37,21 @@ button{cursor:pointer;font-family:inherit}
 .tab{padding:6px 10px;border-radius:5px;border:none;font-size:.82rem;font-weight:600;background:transparent;color:#6b6a69;flex:1}
 .tab.active{background:#2a2927;color:#f0ede8}
 #drag-ghost{position:fixed;pointer-events:none;z-index:9999;transform:translate(-50%,-55%);opacity:.92;display:none}
+/* Home: three columns on a wide screen, one on a phone — with Play on top there,
+   because on a phone the point of opening the app is to start a game. */
+.panels{display:grid;gap:12px;grid-template-columns:1fr;max-width:1180px;margin:0 auto;align-items:start}
+.p-play{order:-1}
+@media(min-width:900px){
+  .panels{grid-template-columns:1fr 1.15fr 1fr}
+  .p-play{order:0}
+}
+.play-btn{display:block;width:100%;text-align:left;border-radius:10px;padding:14px 16px;margin-bottom:10px;border:1px solid #3d3a36;background:#161512;color:#f0ede8;cursor:pointer}
+.play-btn:hover{border-color:#759900;background:#1b1a17}
+.play-btn b{display:block;font-size:1rem;margin-bottom:3px}
+.play-btn span{display:block;font-size:.78rem;color:#6b6a69;line-height:1.45}
+.play-btn.primary{border-color:#759900;background:#1e2608}
+.lb-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+.lb-row:nth-child(odd){background:#191817}
 </style>
 </head>
 <body>
