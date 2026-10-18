@@ -20,7 +20,9 @@ import{eloChg}from'./shared/rating.js';
 import{BOTS,BOT_BY_NAME,onlineBotNames,botDepth,botBlunder,
         bestBotMove,maybeBlunder,evalBoard}from'./shared/bot-roster.js';
 
-initializeApp();
+// The database URL is stated rather than inferred: the instance lives in
+// europe-west1, and a default lookup has no reason to find it there.
+initializeApp({databaseURL:'https://sah-handicap-timp-default-rtdb.europe-west1.firebasedatabase.app'});
 const db=getDatabase();
 const REGION='europe-west1';
 
