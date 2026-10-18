@@ -360,7 +360,7 @@ function pGameId(n){return S.presence[n]?.gameId||null;}
    plus every bot from the roster (a bot has no leaderboard row until it plays). */
 function allEntries(){
   const botNames=new Set(BOT_NAMES);
-  const bots=Object.entries(getBotPlayers()).map(([k,v])=>({name:k,elo:S.allPlayers[k]?.elo??v.elo,status:'online',gameId:null,isBot:true}));
+  const bots=Object.entries(getBotPlayers()).map(([k,v])=>({name:k,elo:S.allPlayers[k]?.elo??v.elo,status:v.online?'online':'inactive',gameId:null,isBot:true}));
   const humans=Object.entries(S.allPlayers).filter(([k])=>!botNames.has(k))
     .map(([k,v])=>({name:k,elo:v.elo||1000,status:pStatus(k),gameId:pGameId(k),isBot:false}));
   return[...humans,...bots];
@@ -368,10 +368,10 @@ function allEntries(){
 const myEloNow=()=>S.allPlayers[S.user]?.elo||1000;
 
 function countsHtml(){
-  const humans=allEntries().filter(p=>!p.isBot);
-  const online=humans.filter(p=>p.status!=='inactive').length;
+  const all=allEntries();
+  const online=all.filter(p=>p.status!=='inactive').length;
   return`<div style="text-align:center;color:#6b6a69;font-size:.78rem;padding:14px 0 6px">
-    <b style="color:#bab9b8">${humans.length}</b> player${humans.length===1?'':'s'} registered
+    <b style="color:#bab9b8">${all.length}</b> player${all.length===1?'':'s'} registered
     · <b style="color:#759900">${online}</b> online now
   </div>`;
 }
@@ -491,7 +491,7 @@ function lobbyHtml(){
         <div><div style="display:flex;align-items:center;gap:5px">
           <button onclick="W.openProf('${esc(p.name)}')" style="background:none;border:none;padding:0;color:${p.status==='inactive'?'#6b6a69':isMe?'#a8c000':'#f0ede8'};font-weight:700;font-size:.9rem;cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(p.name)}${isMe?' ◀':''}</button>
           <span style="color:#c8a400;font-size:.8rem;font-weight:600">${p.elo}</span>
-          ${p.isBot?'':p.status==='ingame'?`<span style="color:#cc4444;font-size:.7rem">playing</span>`:p.status==='inactive'?`<span style="color:#3d3a36;font-size:.7rem">offline</span>`:''}
+          ${p.status==='ingame'?`<span style="color:#cc4444;font-size:.7rem">playing</span>`:p.status==='inactive'?`<span style="color:#3d3a36;font-size:.7rem">offline</span>`:''}
         </div></div>
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0">
@@ -632,8 +632,11 @@ W.cancelQueue=()=>{leaveQueue();render();};
 /* Nobody showed up — pair with the bot closest to the player's rating. */
 async function startQueueBotGame(mode){
   const myElo=myEloNow();
-  const pool=allEntries().filter(p=>p.isBot).sort((a,b)=>Math.abs(a.elo-myElo)-Math.abs(b.elo-myElo));
-  const bot=pool[0];
+  // Only from those shown as available, so the pairing matches what the lobby says.
+  const byCloseness=(a,b)=>Math.abs(a.elo-myElo)-Math.abs(b.elo-myElo);
+  const bots=allEntries().filter(p=>p.isBot);
+  const pool=bots.filter(p=>p.status==='online').sort(byCloseness);
+  const bot=pool[0]||bots.sort(byCloseness)[0];
   if(!bot){S.queueNote='No opponent available right now.';render();return;}
   const rated=mode==='ranked';
   leaveQueue();

@@ -293,11 +293,32 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
   },500);
 }
 /* ─── Inject bots into allPlayers (display only) ─── */
+/* ─── Who is around right now ───
+   A different slice of the roster is available each hour. It is derived from the
+   clock alone, so every client computes the same list with no server and no
+   stored state. `(i + hour) % 3` rotates a third of the ladder — and because the
+   roster is ordered by rating, that third always spans weak to strong, so there
+   is someone near any player's level. The hash adds a few extra so the number
+   moves between hours instead of sitting at exactly nine. */
+function strHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0);}
+function onlineBotNames(ts=Date.now()){
+  const out=new Set();
+  BOTS.forEach((b,i)=>{
+    // Each one keeps its own clock, so arrivals and departures are spread across
+    // the hour instead of everybody changing at once on the hour mark.
+    const phase=strHash(b.name)%3600000;
+    const hour=Math.floor((ts+phase)/3600000);
+    if((i+hour)%3===0||strHash(b.name+':'+hour)%100<12)out.add(b.name);
+  });
+  return out;
+}
+const isBotOnline=(name,ts)=>onlineBotNames(ts).has(name);
+
 function getBotPlayers(){
-  const bots={};
-  BOTS.forEach(b=>{bots[b.name]={elo:b.seed,isBot:true,nationality:b.flag,club:''};});
+  const bots={},online=onlineBotNames();
+  BOTS.forEach(b=>{bots[b.name]={elo:b.seed,isBot:true,nationality:b.flag,club:'',online:online.has(b.name)};});
   return bots;
 }
 
-export{BOTS,BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botThinkTime,
+export{BOTS,BOT_NAMES,BOT_BY_NAME,isBotName,isBotOnline,onlineBotNames,botElo,botDepth,botBlunder,botThinkTime,
        botAcceptsChallenge,botReplyDelay,evalBoard,bestBotMove,maybeBlunder,startBotGame,getBotPlayers};
