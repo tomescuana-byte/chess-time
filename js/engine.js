@@ -12,12 +12,14 @@ function ib(){const b=Array(8).fill(null).map(()=>Array(8).fill(null));b[0]=['r'
 // Identity of a position for repetition purposes: men, side to move, castling
 // rights and the en-passant square. Two positions differing in any of those
 // are not the same position.
+// Ranks are separated by "-" and not the usual "/": these strings are stored as
+// database keys, and Firebase rejects a key containing . # $ / [ or ].
 function posKey(board,turn,cas,ep){
   let s='';
   for(let r=0;r<8;r++){let empty=0;
     for(let c=0;c<8;c++){const p=board[r][c];if(p){if(empty){s+=empty;empty=0;}s+=p;}else empty++;}
-    if(empty)s+=empty;s+='/';}
-  return s+turn+(cas.wK?'K':'')+(cas.wQ?'Q':'')+(cas.bK?'k':'')+(cas.bQ?'q':'')+(ep?`:${ep[0]}${ep[1]}`:'');
+    if(empty)s+=empty;s+='-';}
+  return s+turn+(cas.wK?'K':'')+(cas.wQ?'Q':'')+(cas.bK?'k':'')+(cas.bQ?'q':'')+(ep?`e${ep[0]}${ep[1]}`:'');
 }
 
 // Neither side could deliver mate even with the most cooperative play.

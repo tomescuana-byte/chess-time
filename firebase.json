@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20",
+    "predeploy": ["node \"functions/copy-shared.js\""],
+    "ignore": ["node_modules", ".git", "*.log"]
+  }
+}

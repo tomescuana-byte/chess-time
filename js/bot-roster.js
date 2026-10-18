@@ -1,7 +1,7 @@
 /* Bot roster, strength ladder, evaluation and move search.
    Pure: no DOM, no Firebase, no browser APIs — the server imports this file as
    it stands, so the bots that play on the ladder are the same bots you meet. */
-import{pc,legals,applyMove}from'./engine.js';
+import{pc,legals,applyMove,inChk}from'./engine.js';
 import{applyAutoTime}from'./rating.js';
 
 /* The roster. `seed` is where calibration should eventually place each bot — it is
@@ -119,22 +119,50 @@ function evalBoard(board) {
   return score;
 }
 
+/* One move applied inside the search. Promotion matters here more than anywhere:
+   without it the search pushes a pawn to the last rank and leaves it a pawn, so
+   it never sees a won endgame and shuffles instead of queening. */
+function applyFast(board,m,color){
+  const nb=board.map(r=>[...r]);
+  let p=nb[m.fr][m.fc];
+  if(p&&p.toLowerCase()==='p'&&(m.tr===0||m.tr===7))p=color==='w'?'Q':'q';
+  nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
+  return nb;
+}
+
+/* Every legal move for `color`, captures first. Alpha-beta cuts far more when
+   the strongest replies are tried first; the previous random order threw that
+   away and made the search several times slower for the same result. */
+function orderedMoves(board,color,gs){
+  const out=[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    if(!board[r][c]||pc(board[r][c])!==color)continue;
+    for(const[tr,tc] of legals(board,r,c,gs)){
+      const victim=board[tr][tc];
+      // Most valuable victim first, cheapest attacker as the tie-break.
+      const gain=victim?Math.abs(PVAL[victim.toUpperCase()]||0)-Math.abs(PVAL[board[r][c].toUpperCase()]||0)/10:-1;
+      out.push({fr:r,fc:c,tr,tc,gain});
+    }
+  }
+  out.sort((a,b)=>b.gain-a.gain);
+  return out;
+}
+
 function minimax(board,depth,alpha,beta,isMax,gs) {
   if(depth===0) return evalBoard(board);
   const color=isMax?'w':'b';
-  const moves=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
-    if(!board[r][c]||pc(board[r][c])!==color)continue;
-    const lm=legals(board,r,c,gs);
-    for(const[tr,tc] of lm) moves.push({fr:r,fc:c,tr,tc});
+  const moves=orderedMoves(board,color,gs);
+  if(!moves.length){
+    // No moves is checkmate only when the king is attacked. Treating stalemate
+    // as a win is how a winning engine talks itself into a draw.
+    if(!inChk(board,color))return 0;
+    return isMax?-(99000+depth):(99000+depth);   // a quicker mate scores higher
   }
-  if(!moves.length) return isMax?-99999:99999;
   if(isMax){
     let best=-Infinity;
     for(const m of moves){
-      const nb=board.map(r=>[...r]);
-      const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
-      const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
+      const nb=applyFast(board,m,color);
+      const ngs={...gs,board:nb,turn:'b',enPassant:null,castling:gs.castling};
       best=Math.max(best,minimax(nb,depth-1,alpha,beta,false,ngs));
       alpha=Math.max(alpha,best);
       if(beta<=alpha)break;
@@ -143,9 +171,8 @@ function minimax(board,depth,alpha,beta,isMax,gs) {
   }else{
     let best=Infinity;
     for(const m of moves){
-      const nb=board.map(r=>[...r]);
-      const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
-      const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
+      const nb=applyFast(board,m,color);
+      const ngs={...gs,board:nb,turn:'w',enPassant:null,castling:gs.castling};
       best=Math.min(best,minimax(nb,depth-1,alpha,beta,true,ngs));
       beta=Math.min(beta,best);
       if(beta<=alpha)break;
@@ -156,23 +183,17 @@ function minimax(board,depth,alpha,beta,isMax,gs) {
 
 function bestBotMove(gs,color,depth) {
   const board=gs.board;
-  const moves=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
-    if(!board[r][c]||pc(board[r][c])!==color)continue;
-    const lm=legals(board,r,c,gs);
-    for(const[tr,tc] of lm) moves.push({fr:r,fc:c,tr,tc});
-  }
+  const moves=orderedMoves(board,color,gs);
   if(!moves.length)return null;
-  // Shuffle for variety at low depths
-  moves.sort(()=>Math.random()-0.5);
   const isMax=color==='w';
-  let best=isMax?-Infinity:Infinity,bestMove=moves[0];
+  let best=isMax?-Infinity:Infinity,bestMove=moves[0],alpha=-Infinity,beta=Infinity;
   for(const m of moves){
-    const nb=board.map(r=>[...r]);
-    const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
-    const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null,castling:gs.castling};
-    const val=minimax(nb,depth-1,-Infinity,Infinity,!isMax,ngs);
-    if(isMax?val>best:val<best){best=val;bestMove=m;}
+    const nb=applyFast(board,m,color);
+    const ngs={...gs,board:nb,turn:isMax?'b':'w',enPassant:null,castling:gs.castling};
+    const val=minimax(nb,depth-1,alpha,beta,!isMax,ngs);
+    // Ties broken at random, so two games between the same pair are not identical.
+    if(isMax?(val>best||(val===best&&Math.random()<0.3)):(val<best||(val===best&&Math.random()<0.3))){best=val;bestMove=m;}
+    if(isMax)alpha=Math.max(alpha,best);else beta=Math.min(beta,best);
   }
   return bestMove;
 }
