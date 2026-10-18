@@ -9,7 +9,7 @@ import{pc,TERM,ib,legals,applyMove,premoveValid}from'./engine.js';
 import{esc,fs,ft,timeAgo,h2hKey}from'./utils.js';
 import{pi}from'./pieces.js';
 import{applyAutoTime,finalizeGame,finalizeBotGame,resetBotEloLock}from'./elo.js';
-import{BOT_NAMES,botElo,botDepth,startBotGame,getBotPlayers}from'./bots.js';
+import{BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botAcceptsChallenge,botReplyDelay,startBotGame,getBotPlayers}from'./bots.js';
 
 /* ═══ SESSION ═══
    Firebase Auth owns the session (persisted in localStorage by the SDK).
@@ -75,7 +75,7 @@ const S={
   pickErr:'',
   allPlayers:{},presence:{},
   inChalls:[],outChall:null,
-  challDlg:false,challTarget:'',challColor:'r',wTimeSec:180,bTimeSec:180,challH2h:null,autoTime:false,
+  challDlg:false,challTarget:'',challColor:'r',wTimeSec:180,bTimeSec:180,challH2h:null,autoTime:false,challMsg:'',
   sort:'elo',
   chatMsgs:[],
   gid:null,gInfo:null,gs:null,sel:null,lMv:[],promo:null,premove:null,
@@ -169,6 +169,7 @@ async function ensurePlayer(name,uid){
 // Claims a username for a uid. Returns '' on success, or an error message.
 async function claimUsername(uid,name){
   if(!NAME_RE.test(name))return'Username: 2-20 chars (a-z, 0-9, _)';
+  if(isBotName(name))return'That username is taken.'; // don't let a human shadow a bot
   const owner=await fGet(`usernames/${name}`);
   if(owner&&owner!==uid)return'That username is taken.';
   // A rejected write is almost always the rules, not a race — don't blame the name for it.
@@ -340,6 +341,7 @@ function lobbyHtml(){
   const dot=s=>`<span style="width:8px;height:8px;border-radius:50%;background:${s==='online'?'#759900':s==='ingame'?'#cc4444':'#3d3a36'};display:inline-block;flex-shrink:0"></span>`;
   const inC=S.inChalls.length?`<div class="card"><h3 style="margin:0 0 8px;color:#c8a400;font-size:.85rem">⚔ Challenges received</h3>${S.inChalls.map(ch=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#161512;border-radius:6px;margin-bottom:5px;gap:6px;flex-wrap:wrap"><div><b style="color:#f0ede8">${esc(ch.from)}</b><span style="color:#c8a400;font-size:.8rem;margin-left:5px">${S.allPlayers[ch.from]?.elo||1000}</span><div style="color:#6b6a69;font-size:.76rem;margin-top:1px">♔${fs(ch.whiteMs/1000)} | ♚${fs(ch.blackMs/1000)} — you: <span style="color:#759900">${ch.challColor==='w'?'black':'white'}</span></div></div><div style="display:flex;gap:5px"><button onclick="W.accept('${esc(ch.id)}')" class="btn-g" style="padding:5px 10px;font-size:.82rem">Accept</button><button onclick="W.decline('${esc(ch.id)}')" class="btn-r" style="padding:5px 10px;font-size:.82rem">Decline</button></div></div>`).join('')}</div>`:'';
   const outC=S.outChall?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #c8a400;display:flex;justify-content:space-between;align-items:center"><span style="color:#c8a400;font-size:.88rem">⏳ Sent to <b>${esc(S.outChall.to)}</b>...</span><button onclick="W.cancelC()" class="btn-o" style="padding:4px 10px;font-size:.78rem">Cancel</button></div>`:'';
+  const msgC=S.challMsg?`<div style="background:#1f1e1d;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #2a2927;border-left:3px solid #cc4444;display:flex;justify-content:space-between;align-items:center"><span style="color:#cc4444;font-size:.88rem">${esc(S.challMsg)}</span><button onclick="W.dismissMsg()" class="btn-o" style="padding:4px 10px;font-size:.78rem">OK</button></div>`:'';
   const rows=pl.map((p,i)=>{
     const isMe=p.name===S.user,canC=p.status==='online'&&!S.outChall&&!isMe,canW=p.status==='ingame'&&p.gameId&&!p.isBot;
     return`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:${isMe?'#1a2a1a':'#161512'};border-radius:6px;margin-bottom:4px;border:${isMe?'1px solid #2a4a2a':'1px solid transparent'}">
@@ -370,7 +372,7 @@ function lobbyHtml(){
       <button onclick="W.logout()" class="btn-o" style="padding:5px 12px;font-size:.82rem">Logout</button>
     </div>
   </div>
-  ${inC}${outC}
+  ${inC}${outC}${msgC}
   <div class="card" style="padding:10px"><h3 style="margin:0 0 8px;font-size:.82rem;color:#6b6a69">Leaderboard (${pl.length})</h3>${rows}</div>
   <div class="card">
     <h3 style="margin:0 0 8px;font-size:.85rem;color:#6b6a69">💬 Chat</h3>
@@ -433,23 +435,39 @@ W.send=async()=>{
     const mw=rc==='w';wMs=(mw?mySec:oppSec)*1000;bMs=(mw?oppSec:mySec)*1000;
   }
   if(isBot){
-    // Instant bot game
-    const white=rc==='w'?S.user:S.challTarget,black=rc==='w'?S.challTarget:S.user;
+    const target=S.challTarget;
+    const white=rc==='w'?S.user:target,black=rc==='w'?target:S.user;
     const botColor=rc==='w'?'b':'w'; // bot plays opposite of user
-    const botEloVal=S.allPlayers[S.challTarget]?.elo??botElo(BOT_NAMES.indexOf(S.challTarget));
-    const depth=botDepth(botEloVal);
-    const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,isBot:true,botName:S.challTarget,botColor,botElo:botEloVal,botDepth:depth};
-    await fSet(`games/${id}`,game);
+    const botEloVal=S.allPlayers[target]?.elo??botElo(BOT_NAMES.indexOf(target));
+    const myMs=rc==='w'?wMs:bMs,botMs=rc==='w'?bMs:wMs;
+    // A bot deliberates like anyone else: the challenge sits pending, then it
+    // answers — and it does not always say yes.
     S.challDlg=false;
-    enterGame(id,game);
-    // Start bot engine
-    startBotGame(id,S.challTarget,botColor,botEloVal,depth);
+    S.outChall={from:S.user,to:target,whiteMs:wMs,blackMs:bMs,id,bot:true};
+    render();
+    const verdict=botAcceptsChallenge(botEloVal,S.allPlayers[S.user]?.elo||1000,myMs,botMs);
+    setTimeout(async()=>{
+      if(S.outChall?.id!==id)return;          // user cancelled or moved on
+      S.outChall=null;
+      if(!verdict.ok){S.challMsg=`${target} ${verdict.why}`;render();return;}
+      const depth=botDepth(botEloVal),blunder=botBlunder(botEloVal);
+      const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,isBot:true,botName:target,botColor,botElo:botEloVal,botDepth:depth,botBlunder:blunder};
+      await fSet(`games/${id}`,game);
+      enterGame(id,game);
+      startBotGame(id,target,botColor,botEloVal,depth,blunder);
+    },botReplyDelay());
     return;
   }
   await fSet(`challenges/${id}`,{from:S.user,to:S.challTarget,challColor:rc,whiteMs:wMs,blackMs:bMs,status:'pending',ts:Date.now()});
   S.outChall={from:S.user,to:S.challTarget,whiteMs:wMs,blackMs:bMs,id};S.challDlg=false;render();
 };
-W.cancelC=async()=>{if(!S.outChall)return;await fSet(`challenges/${S.outChall.id}`,{...S.outChall,status:'cancelled'});S.outChall=null;render();};
+W.cancelC=async()=>{
+  if(!S.outChall)return;
+  const oc=S.outChall;S.outChall=null;render();
+  // A bot challenge never reached the database — dropping it locally is enough.
+  if(!oc.bot)await fSet(`challenges/${oc.id}`,{...oc,status:'cancelled'});
+};
+W.dismissMsg=()=>{S.challMsg='';render();};
 W.accept=async id=>{
   const ch=S.inChalls.find(c=>c.id===id);if(!ch)return;
   const white=ch.challColor==='w'?ch.from:ch.to,black=ch.challColor==='w'?ch.to:ch.from;
@@ -461,7 +479,7 @@ W.decline=async id=>{const ch=S.inChalls.find(c=>c.id===id);if(ch)await fSet(`ch
 W.logout=async()=>{clearInterval(hbId);unsub();if(S.user)await fSet(`presence/${S.user}`,{ts:0,status:'offline'});S.user=null;S.uid=null;try{await signOut(auth);}catch{}S.screen='auth';render();};
 
 /* ═══ PROFILE ═══ */
-W.openProf=async name=>{S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();const[pd,pg]=await Promise.all([fGet(`players/${name}`),fGet(`playerGames/${name}`)]);S.profileData=pd||{elo:1000};S.profileGames=pg?Object.values(pg).sort((a,b)=>b.ts-a.ts):[];if(S.screen==='profile')render();};
+W.openProf=async name=>{S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();const[pd,pg]=await Promise.all([fGet(`players/${name}`),fGet(`playerGames/${name}`)]);S.profileData=pd||(BOT_BY_NAME[name]?{elo:BOT_BY_NAME[name].seed,isBot:true,nationality:BOT_BY_NAME[name].flag,club:''}:{elo:1000});S.profileGames=pg?Object.values(pg).sort((a,b)=>b.ts-a.ts):[];if(S.screen==='profile')render();};
 W.profTab=t=>{S.profileTab=t;render();};
 W.saveProf=async()=>{const nat=(document.getElementById('pn')?.value||'').trim().slice(0,50),club=(document.getElementById('pc')?.value||'').trim().slice(0,50);const p=await fGet(`players/${S.profileTarget}`);await fSet(`players/${S.profileTarget}`,{...p,nationality:nat,club});S.profileData={...S.profileData,nationality:nat,club};render();};
 W.backLobby=()=>{S.screen='lobby';render();};
@@ -554,7 +572,7 @@ function enterGame(gid,game){
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';
   if(game.isBot&&game.botName&&game.botColor&&!TERM.includes(game.status)){
     resetBotEloLock();
-    startBotGame(gid,game.botName,game.botColor,game.botElo||1000,game.botDepth||2);
+    startBotGame(gid,game.botName,game.botColor,game.botElo||1000,game.botDepth||2,game.botBlunder||0);
   }
   fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid});
   hbId=setInterval(()=>fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid}),5000);
@@ -699,7 +717,10 @@ function gameHtml(){
   const oppC=myC==='w'?'b':'w';
   const oppN=myC==='w'?gInfo.black:gInfo.white,myN=myC==='w'?gInfo.white:gInfo.black;
   const oppMs=dispMs[oppC],myMs=dispMs[myC],oppA=gs.turn===oppC&&!fin,myA=gs.turn===myC&&!fin;
-  const oppElo=S.allPlayers[oppN]?.elo||1000,myElo=S.allPlayers[myN]?.elo||1000;
+  // Bots are not in allPlayers until they have played, so fall back to the rating
+  // the game was actually created with — otherwise every bot shows a flat 1000.
+  const oppElo=S.allPlayers[oppN]?.elo??(gInfo.botName===oppN?gInfo.botElo:null)??BOT_BY_NAME[oppN]?.seed??1000;
+  const myElo=S.allPlayers[myN]?.elo||1000;
   const sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',draw_stalemate:'Draw — stalemate!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — resign!',resigned_black:'White wins — resign!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const clk=(n,elo,ms,act,me,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:7px"><img src="${pi(me?(myC==='w'?'K':'k'):(myC==='w'?'k':'K'))}" style="width:20px;height:20px;opacity:.7"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}${me?' (you)':''}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span>${me&&premove?.to?`<span style="font-size:.7rem;color:#7da0c0">pre</span>`:''}</div><span id="${id}" style="font-size:${ms<15000?'1.45rem':'1.6rem'};font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
   const promoHtml=promo?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:200"><div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;text-align:center;border:1px solid #2a2927"><p style="margin:0 0 1rem;color:#bab9b8;font-size:.9rem">Promotion:</p><div style="display:flex;gap:8px">${['q','r','b','n'].map(p=>`<button onclick="W.promo('${p}')" style="width:68px;height:68px;border-radius:8px;border:2px solid #3d3a36;background:#161512;cursor:pointer;padding:6px"><img src="${pi(myC==='w'?p.toUpperCase():p)}" style="width:100%;height:100%"></button>`).join('')}</div></div></div>`:'';

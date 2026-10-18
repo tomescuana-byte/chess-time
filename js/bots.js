@@ -1,66 +1,98 @@
 /* Bot roster, evaluation and the in-browser move search. */
 import{fSet,fGet}from'./firebase.js';
 import{pc,TERM,legals,applyMove}from'./engine.js';
+import{applyAutoTime}from'./elo.js';
 
-const BOT_NAMES = [
-  // Legende ale șahului
-  "DeepKnight","IronCastle","SilverBishop","GoldenPawn","CrimsonQueen",
-  "ShadowRook","FrostKing","StormKnight","VoidMaster","PhantomGambit",
-  // Stiluri de joc
-  "BlitzWolf","TacticFox","StratosMind","EndgameGhost","OpeningTrap",
-  "SicilianDragon","KingsGambit","QueensPawn","NimzoWitch","CatalanOwl",
-  // Nume inventive
-  "Vortex64","MatrixBishop","NeuralRook","QuantumPawn","AlphaForge",
-  "CipherKing","ByteKnight","LogicQueen","BinaryBlade","HexMaster",
-  // Personaje mitologice/fantastică
-  "AresGambit","HermesBlitz","AthenaEnd","ZeusStrike","PoseidonRook",
-  "LokiTactic","OdinForge","ThorCastle","FreyaQueen","ValkyriePawn",
-  // Natură și cosmos
-  "NebulaMind","CosmosRook","SolarBishop","LunarKnight","AuroraQueen",
-  "TwilightKing","EclipseForge","StarlightPawn","CometBlitz","NovaStrike",
-  // Animale de putere
-  "OnyxPanther","CrimsonHawk","IronWolf","SilverFalcon","AzureDragon",
-  "GoldenEagle","ShadowLynx","FrostBear","ThunderRaven","StoneGolem",
-  // Elemente
-  "EmberRook","TidalBishop","GaleKnight","GraniteQueen","FluxPawn",
-  "CinderKing","MistralEnd","AbyssGambit","InfernoBlitz","TerraForge",
-  // Clasic elegant
-  "MaestroNoir","GrandVizier","SilkRook","VelvetKnight","EbonyQueen",
-  "IvoryKing","ObsidianPawn","QuartzBishop","SapphireEnd","RubyGambit",
-  // Misterios
-  "EnigmaX","ShadowCode","CrypticMind","ArcaneRook","MysticForge",
-  "OracleKnight","ProphetQueen","SeerKing","AugurPawn","OmenBishop"
+/* The roster. `seed` is where calibration should eventually place each bot — it is
+   the starting rating only, and moves from there as the bot plays. Ratings are
+   deliberately capped below 2000 so a strong human can realistically reach #1. */
+const BOTS = [
+  {name:'789',             flag:'China',       seed:650},
+  {name:'firstgrader',     flag:'USA',         seed:720},
+  {name:'thekid',          flag:'USA',         seed:800},
+  {name:'Pompkin',         flag:'Sweden',      seed:880},
+  {name:'meatball20',      flag:'USA',         seed:950},
+  {name:'JJLOVELOVE',      flag:'Thailand',    seed:1010},
+  {name:'RabbitRain',      flag:'Japan',       seed:1070},
+  {name:'Nounours Sucre',  flag:'France',      seed:1130},
+  {name:'sorryimlikethis', flag:'Australia',   seed:1180},
+  {name:'carzen17',        flag:'Japan',       seed:1230},
+  {name:'Enni10',          flag:'Germany',     seed:1280},
+  {name:'mikim',           flag:'Russia',      seed:1320},
+  {name:'Julian1994',      flag:'Germany',     seed:1360},
+  {name:'Onyx37',          flag:'France',      seed:1400},
+  {name:'champion16',      flag:'Taiwan',      seed:1440},
+  {name:'ElerCant',        flag:'Kazakhstan',  seed:1480},
+  {name:'Norimsoo',        flag:'South Korea', seed:1520},
+  {name:'Chapelier7',      flag:'France',      seed:1560},
+  {name:'MadCassowary',    flag:'France',      seed:1600},
+  {name:'lincoln9818',     flag:'China',       seed:1650},
+  {name:'sprockitz',       flag:'USA',         seed:1700},
+  {name:'Weapenguin',      flag:'Canada',      seed:1750},
+  {name:'Flosimelator',    flag:'Germany',     seed:1800},
+  {name:'slywww2020',      flag:'',            seed:1850},
+  {name:'Komandor Tarkin', flag:'Poland',      seed:1880},
+  {name:'ArsèneLupin44',   flag:'France',      seed:1920},
+  {name:'Forevergm',       flag:'',            seed:1950}
 ];
+const BOT_NAMES = BOTS.map(b=>b.name);
+const BOT_BY_NAME = Object.fromEntries(BOTS.map(b=>[b.name,b]));
+const isBotName = n => Object.prototype.hasOwnProperty.call(BOT_BY_NAME,n);
 
-// ELO distribution: 600-2400, weighted toward middle
 function botElo(idx) {
-  const elos = [
-    600,650,700,720,750,780,800,820,850,880,
-    900,920,950,980,1000,1020,1050,1080,1100,1120,
-    1150,1180,1200,1220,1250,1280,1300,1320,1350,1380,
-    1400,1420,1450,1480,1500,1520,1550,1580,1600,1620,
-    1650,1680,1700,1720,1750,1780,1800,1820,1850,1880,
-    1900,1920,1950,1980,2000,2020,2050,2080,2100,2120,
-    2150,2180,2200,2220,2250,2280,2300,2320,2350,2380,
-    2400,2350,2300,2250,2200,2150,2100,2050,2000,1950,
-    1900,1850,1800,1750,1700,1650,1600,1550,1500,1450,
-    1400,1350,1300,1250,1200,1150,1100,1050,1000,950
-  ];
-  return elos[idx % elos.length];
+  const b = BOTS[idx];
+  return b ? b.seed : 1000;
 }
 
-// Depth based on ELO — capped at 3 so worker finishes in <1s
+/* Strength has two knobs, not one. Depth alone gave only three distinct bots
+   across the whole ladder; the blunder rate is what separates 1200 from 1900.
+   `blunder` is the chance of playing a deliberately worse move. */
 function botDepth(elo) {
-  if(elo < 1000) return 1;
-  if(elo < 1400) return 2;
-  return 3;
+  if(elo < 800)  return 1;
+  if(elo < 1200) return 2;
+  if(elo < 1700) return 3;
+  return 4;
+}
+function botBlunder(elo) {
+  if(elo < 800)  return 0.45;
+  if(elo < 1000) return 0.34;
+  if(elo < 1200) return 0.26;
+  if(elo < 1400) return 0.19;
+  if(elo < 1600) return 0.13;
+  if(elo < 1800) return 0.08;
+  return 0.04;
 }
 
-// Think time (ms) — short delay so it feels natural, worker adds its own time
-function botThinkTime(elo) {
-  const base = elo < 1000 ? 200 : elo < 1500 ? 400 : 600;
-  return base + Math.random() * 400;
+/* How long a bot sits on a move. Real players spend time in proportion to what
+   is left on their clock, not a fixed amount — and they are erratic about it.
+   Never spends so long that the bot flags on its own bookkeeping. */
+function botThinkTime(elo, game, botColor, onlyMove) {
+  const left = (botColor === 'w' ? game.whiteMs : game.blackMs) || 180000;
+  if(onlyMove) return 300 + Math.random() * 500;       // forced reply: near-instant
+  const movesLeft = Math.max(12, 42 - (game.fullMoves || 1));
+  const budget = left / movesLeft;
+  let t = budget * (0.3 + Math.random() * 1.9);
+  if(Math.random() < 0.08) t *= 2.5;                   // the occasional long think
+  t = Math.min(t, left * 0.22, 25000);                 // never burn the clock down
+  return Math.max(400, t);
 }
+
+/* Whether a bot takes the challenge. Bots that accept everything instantly read
+   as machines; the delay and the refusals are most of what makes them feel real. */
+function botAcceptsChallenge(botEloVal, myElo, myMs, botMs) {
+  const totalMin = (myMs + botMs) / 120000;
+  if(totalMin > 25) return {ok:false, why:'is not up for a game that long right now.'};
+  if(botMs < 45000) return {ok:false, why:'does not want that little time on the clock.'};
+  /* Lopsided clocks are the whole point of this app, so "unfair" cannot mean
+     "uneven". Fair is whatever the rating gap justifies; the bot only objects to
+     being given noticeably less than that. */
+  const fairSec = applyAutoTime(botEloVal, myElo).mySec;
+  if(botMs < fairSec * 1000 * 0.7) return {ok:false, why:'thinks those odds are too steep.'};
+  if(Math.random() < 0.22) return {ok:false, why:'declined the challenge.'};
+  return {ok:true, why:''};
+}
+// How long the bot "thinks about it" before answering a challenge.
+const botReplyDelay = () => 2500 + Math.random() * 11000;
 
 /* ─── Piece values ─── */
 const PVAL = {P:100,N:320,B:330,R:500,Q:900,K:20000,p:-100,n:-320,b:-330,r:-500,q:-900,k:-20000};
@@ -144,6 +176,34 @@ function bestBotMove(gs,color,depth) {
   return bestMove;
 }
 
+/* Every legal move for `color`, each scored one ply deep. Cheap enough to run on
+   the main thread, and it is all we need to pick a believable mistake. */
+function scoredMoves(gs,color){
+  const board=gs.board,out=[];
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    if(!board[r][c]||pc(board[r][c])!==color)continue;
+    for(const[tr,tc] of legals(board,r,c,gs)){
+      const nb=board.map(row=>[...row]);
+      nb[tr][tc]=nb[r][c];nb[r][c]=null;
+      out.push({m:{fr:r,fc:c,tr,tc},v:evalBoard(nb)});
+    }
+  }
+  return out;
+}
+
+/* Weaker bots don't search less — they search the same and then sometimes play
+   something other than what they found. Picking from the upper-middle of the
+   move list gives an inaccuracy a human would make, not a random catastrophe. */
+function maybeBlunder(gs,color,bestMove,rate){
+  if(!bestMove||Math.random()>=rate)return bestMove;
+  const scored=scoredMoves(gs,color);
+  if(scored.length<3)return bestMove;
+  scored.sort((a,b)=>color==='w'?b.v-a.v:a.v-b.v);
+  const hi=Math.max(1,Math.floor(scored.length*0.6));
+  const pick=scored[1+Math.floor(Math.random()*hi)]||scored[1];
+  return pick?pick.m:bestMove;
+}
+
 /* ─── Bot Web Worker (runs minimax off main thread so clock never freezes) ─── */
 const _botWorkerCode="\nconst pc=p=>p?(p===p.toUpperCase()?'w':'b'):null;\nconst inB=(r,c)=>r>=0&&r<8&&c>=0&&c<8;\nfunction atk(board,r,c,by){const W=by==='w';const[Pn,Kn,Rk,Bi,Qu,Ki]=W?['P','N','R','B','Q','K']:['p','n','r','b','q','k'];const pr=W?r+1:r-1;if(inB(pr,c-1)&&board[pr][c-1]===Pn)return true;if(inB(pr,c+1)&&board[pr][c+1]===Pn)return true;for(const[dr,dc]of[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])if(inB(r+dr,c+dc)&&board[r+dr][c+dc]===Kn)return true;for(const[dr,dc]of[[0,1],[0,-1],[1,0],[-1,0]]){let nr=r+dr,nc=c+dc;while(inB(nr,nc)){if(board[nr][nc]){if(board[nr][nc]===Rk||board[nr][nc]===Qu)return true;break;}nr+=dr;nc+=dc;}}for(const[dr,dc]of[[1,1],[1,-1],[-1,1],[-1,-1]]){let nr=r+dr,nc=c+dc;while(inB(nr,nc)){if(board[nr][nc]){if(board[nr][nc]===Bi||board[nr][nc]===Qu)return true;break;}nr+=dr;nc+=dc;}}for(const[dr,dc]of[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]])if(inB(r+dr,c+dc)&&board[r+dr][c+dc]===Ki)return true;return false;}\nfunction fKp(b,col){const K=col==='w'?'K':'k';for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(b[r][c]===K)return[r,c];return null;}\nfunction inChk(b,col){const p=fKp(b,col);return p?atk(b,p[0],p[1],col==='w'?'b':'w'):false;}\nfunction raw(board,r,c,cas,ep){const piece=board[r][c];if(!piece)return[];const color=pc(piece),p=piece.toLowerCase();const isF=sq=>pc(sq)===color,isE=sq=>sq&&pc(sq)!==color;const mv=[];if(p==='p'){const d=color==='w'?-1:1,st=color==='w'?6:1;if(inB(r+d,c)&&!board[r+d][c]){mv.push([r+d,c]);if(r===st&&!board[r+2*d][c])mv.push([r+2*d,c]);}for(const dc of[-1,1]){if(!inB(r+d,c+dc))continue;if(isE(board[r+d][c+dc]))mv.push([r+d,c+dc]);if(ep&&ep[0]===r+d&&ep[1]===c+dc)mv.push([r+d,c+dc]);}}if(p==='n')for(const[dr,dc]of[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])if(inB(r+dr,c+dc)&&!isF(board[r+dr][c+dc]))mv.push([r+dr,c+dc]);if(p==='b'||p==='q')for(const[dr,dc]of[[1,1],[1,-1],[-1,1],[-1,-1]]){let nr=r+dr,nc=c+dc;while(inB(nr,nc)){if(isF(board[nr][nc]))break;mv.push([nr,nc]);if(board[nr][nc])break;nr+=dr;nc+=dc;}}if(p==='r'||p==='q')for(const[dr,dc]of[[0,1],[0,-1],[1,0],[-1,0]]){let nr=r+dr,nc=c+dc;while(inB(nr,nc)){if(isF(board[nr][nc]))break;mv.push([nr,nc]);if(board[nr][nc])break;nr+=dr;nc+=dc;}}if(p==='k'){for(const[dr,dc]of[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]])if(inB(r+dr,c+dc)&&!isF(board[r+dr][c+dc]))mv.push([r+dr,c+dc]);const opp=color==='w'?'b':'w';if(color==='w'&&r===7&&c===4){if(cas.wK&&!board[7][5]&&!board[7][6]&&!atk(board,7,4,opp)&&!atk(board,7,5,opp)&&!atk(board,7,6,opp))mv.push([7,6]);if(cas.wQ&&!board[7][1]&&!board[7][2]&&!board[7][3]&&!atk(board,7,4,opp)&&!atk(board,7,3,opp)&&!atk(board,7,2,opp))mv.push([7,2]);}if(color==='b'&&r===0&&c===4){if(cas.bK&&!board[0][5]&&!board[0][6]&&!atk(board,0,4,opp)&&!atk(board,0,5,opp)&&!atk(board,0,6,opp))mv.push([0,6]);if(cas.bQ&&!board[0][1]&&!board[0][2]&&!board[0][3]&&!atk(board,0,4,opp)&&!atk(board,0,3,opp)&&!atk(board,0,2,opp))mv.push([0,2]);}}return mv;}\nfunction legals(board,r,c,gs){const piece=board[r][c];if(!piece)return[];const color=pc(piece);return raw(board,r,c,gs.castling,gs.enPassant).filter(([tr,tc])=>{let nb=board.map(row=>[...row]);nb[tr][tc]=nb[r][c];nb[r][c]=null;const p=piece.toLowerCase();if(p==='p'&&gs.enPassant&&tr===gs.enPassant[0]&&tc===gs.enPassant[1]&&!board[tr][tc])nb[color==='w'?tr+1:tr-1][tc]=null;if(p==='k'){const rr=color==='w'?7:0;if(c===4&&tc===6){nb[rr][5]=nb[rr][7];nb[rr][7]=null;}if(c===4&&tc===2){nb[rr][3]=nb[rr][0];nb[rr][0]=null;}}return!inChk(nb,color);});}\nfunction anyLeg(board,color,gs){for(let r=0;r<8;r++)for(let c=0;c<8;c++){if(!board[r][c]||pc(board[r][c])!==color)continue;if(legals(board,r,c,gs).length>0)return true;}return false;}\nconst PVAL={P:100,N:320,B:330,R:500,Q:900,K:20000,p:-100,n:-320,b:-330,r:-500,q:-900,k:-20000};\nconst PST={P:[0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],N:[-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],B:[-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],R:[0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],Q:[-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],K:[-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20]};\nfunction evalBoard(board){let score=0;for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=board[r][c];if(!p)continue;const col=pc(p),isW=col==='w',sym=p.toUpperCase();const baseVal=isW?PVAL[sym]:-PVAL[sym];const pstIdx=isW?r*8+c:(7-r)*8+c;const pstVal=(PST[sym]?PST[sym][pstIdx]:0)*(isW?1:-1);score+=baseVal+pstVal;}return score;}\nfunction minimax(board,depth,alpha,beta,isMax,gs){if(depth===0)return evalBoard(board);const color=isMax?'w':'b';const moves=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){if(!board[r][c]||pc(board[r][c])!==color)continue;const lm=legals(board,r,c,gs);for(const[tr,tc]of lm)moves.push({fr:r,fc:c,tr,tc});}if(!moves.length)return isMax?-99999:99999;if(isMax){let best=-Infinity;for(const m of moves){const nb=board.map(r=>[...r]);const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;const ngs={...gs,board:nb,turn:'b',enPassant:null};best=Math.max(best,minimax(nb,depth-1,alpha,beta,false,ngs));alpha=Math.max(alpha,best);if(beta<=alpha)break;}return best;}else{let best=Infinity;for(const m of moves){const nb=board.map(r=>[...r]);const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;const ngs={...gs,board:nb,turn:'w',enPassant:null};best=Math.min(best,minimax(nb,depth-1,alpha,beta,true,ngs));beta=Math.min(beta,best);if(beta<=alpha)break;}return best;}}\nfunction bestBotMove(gs,color,depth){const board=gs.board;const moves=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){if(!board[r][c]||pc(board[r][c])!==color)continue;const lm=legals(board,r,c,gs);for(const[tr,tc]of lm)moves.push({fr:r,fc:c,tr,tc});}if(!moves.length)return null;moves.sort(()=>Math.random()-0.5);const isMax=color==='w';let best=isMax?-Infinity:Infinity,bestMove=moves[0];for(const m of moves){const nb=board.map(r=>[...r]);const p=nb[m.fr][m.fc];nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;const ngs={...gs,board:nb,turn:color==='w'?'b':'w',enPassant:null};const val=minimax(nb,depth-1,-Infinity,Infinity,!isMax,ngs);if(isMax?val>best:val<best){best=val;bestMove=m;}}return bestMove;}\nself.onmessage=function(e){const{gs,color,depth}=e.data;const move=bestBotMove(gs,color,depth);self.postMessage({move});};\n";
 const _botWorkerBlob=new Blob([_botWorkerCode],{type:'application/javascript'});
@@ -153,7 +213,7 @@ const _botWorkerUrl=URL.createObjectURL(_botWorkerBlob);
 let botGameInterval=null;
 let botThinking=false;
 let botWorker=null;
-function startBotGame(gid,botName,botColor,botEloVal,depth){
+function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
   clearInterval(botGameInterval);
   botThinking=false;
   if(botWorker){botWorker.terminate();botWorker=null;}
@@ -166,6 +226,12 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
     if(botColor==='w'&&elapsed>g.whiteMs)return;
     if(botColor==='b'&&elapsed>g.blackMs)return;
     botThinking=true;
+    // A forced reply should come back instantly, the way a person's would.
+    let onlyMove=false;
+    try{
+      const gsPeek={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
+      onlyMove=scoredMoves(gsPeek,botColor).length<=1;
+    }catch{}
     // Use Web Worker so main thread (clock, UI) never blocks
     setTimeout(async()=>{
       try{
@@ -179,7 +245,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
         try{botWorker=new Worker(_botWorkerUrl);}catch(e){workerSupported=false;}
         if(!workerSupported){
           // Synchronous fallback (depth capped at 2 to keep it fast)
-          const m=bestBotMove(gsF,botColor,Math.min(depth,2));
+          const m=maybeBlunder(gsF,botColor,bestBotMove(gsF,botColor,Math.min(depth,2)),blunder);
           if(!m){botThinking=false;return;}
           const gF2=await fGet(`games/${gid}`);
           if(!gF2||gF2.turn!==botColor||TERM.includes(gF2.status)){botThinking=false;return;}
@@ -199,7 +265,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
         botWorker.onmessage=async(e)=>{
           try{
             botWorker=null;
-            const m=e.data.move;
+            const m=maybeBlunder(gsF,botColor,e.data.move,blunder);
             if(!m){botThinking=false;return;}
             // Final check: re-fetch to make sure turn hasn't changed
             const gF2=await fGet(`games/${gid}`);
@@ -223,17 +289,15 @@ function startBotGame(gid,botName,botColor,botEloVal,depth){
         botWorker.onerror=()=>{botThinking=false;if(botWorker){botWorker.terminate();botWorker=null;}};
         botWorker.postMessage({gs:gsF,color:botColor,depth});
       }catch(err){botThinking=false;}
-    },botThinkTime(botEloVal));
+    },botThinkTime(botEloVal,g,botColor,onlyMove));
   },500);
 }
 /* ─── Inject bots into allPlayers (display only) ─── */
 function getBotPlayers(){
   const bots={};
-  BOT_NAMES.forEach((name,i)=>{
-    bots[name]={elo:botElo(i),isBot:true};
-  });
+  BOTS.forEach(b=>{bots[b.name]={elo:b.seed,isBot:true,nationality:b.flag,club:''};});
   return bots;
 }
 
-
-export{BOT_NAMES,botElo,botDepth,botThinkTime,evalBoard,bestBotMove,startBotGame,getBotPlayers};
+export{BOTS,BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botThinkTime,
+       botAcceptsChallenge,botReplyDelay,evalBoard,bestBotMove,maybeBlunder,startBotGame,getBotPlayers};
