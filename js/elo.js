@@ -1,5 +1,18 @@
-import{fSet,fGet,fPush}from'./firebase.js';
+import{fSet,fGet,fPush,fUpdate}from'./firebase.js';
 import{h2hKey}from'./utils.js';
+
+/* ── Where a rating lives ──────────────────────────────────────────────────
+   leaderboard/{name} = { elo, isBot }   small, and every client subscribes to it
+   players/{name}     = identity + profile fields, read on demand
+   history/{name}     = one pushed entry per game, read only when a profile opens
+   Keeping the history out of the subscribed node is what makes bots playing
+   round the clock affordable: a rating change pushes ~40 bytes to each client
+   instead of the whole players tree. */
+const readElo=async name=>(await fGet(`leaderboard/${name}/elo`))??(await fGet(`players/${name}/elo`))??null;
+async function writeRating(name,elo,isBot,entry){
+  await fUpdate(`leaderboard/${name}`,{elo,isBot:!!isBot});
+  await fPush(`history/${name}`,entry);
+}
 
 function calcAutoTime(eloA,eloB){const BASE=180,STEP=15,STEP_ELO=50,MIN_S=60,MAX_W=600;const diff=Math.abs(eloA-eloB),steps=Math.floor(diff/STEP_ELO);if(steps===0)return{strongerSec:BASE,weakerSec:BASE};const ph1=Math.floor((BASE-MIN_S)/STEP),s1=Math.min(steps,ph1);return{strongerSec:BASE-s1*STEP,weakerSec:Math.min(MAX_W,BASE+(steps-s1)*STEP)};}
 function applyAutoTime(myElo,oppElo){const{strongerSec,weakerSec}=calcAutoTime(myElo,oppElo);const strong=myElo>=oppElo;return{mySec:strong?strongerSec:weakerSec,oppSec:strong?weakerSec:strongerSec};}
@@ -22,24 +35,19 @@ async function finalizeBotGame(game,gid,me){
   if(['white_wins','black_timeout','resigned_black'].includes(game.status))pScore=playerColor==='w'?1:0;
   else if(['black_wins','white_timeout','resigned_white'].includes(game.status))pScore=playerColor==='w'?0:1;
   else pScore=0.5;
-  const pD=await fGet(`players/${playerName}`);
-  const pE=pD?.elo||1000;
+  const pE=(await readElo(playerName))??1000;
   const iWMs=game.initWhiteMs||game.whiteMs,iBMs=game.initBlackMs||game.blackMs;
   const myMs=playerColor==='w'?iWMs:iBMs,oppMs=playerColor==='w'?iBMs:iWMs;
   const pChg=eloChg(pE,botEloVal,pScore,myMs,oppMs);
-  const nPE=pE+pChg;
-  const pH=[...(pD?.eloHistory||[]),{elo:nPE,ts:Date.now(),gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg}];
-  await fSet(`players/${playerName}`,{...(pD||{}),elo:nPE,eloHistory:pH.slice(-50)});
-  // Also update bot's ELO in Firebase so leaderboard reflects it
+  const nPE=pE+pChg,ts=Date.now();
+  await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Bot',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg});
   const botName=game.botName;
   if(botName){
-    const botD=await fGet(`players/${botName}`);
-    const botCurElo=botD?.elo??botEloVal;
+    const botCurElo=(await readElo(botName))??botEloVal;
     const botScore=1-pScore;
     const botChg=eloChg(botCurElo,pE,botScore,oppMs,myMs);
     const nBotE=Math.max(100,botCurElo+botChg);
-    const botH=[...(botD?.eloHistory||[]),{elo:nBotE,ts:Date.now(),gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg}];
-    await fSet(`players/${botName}`,{...(botD||{}),elo:nBotE,eloHistory:botH.slice(-50),isBot:true});
+    await writeRating(botName,nBotE,true,{elo:nBotE,ts,gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg});
   }
   const wScore=playerColor==='w'?pScore:(1-pScore),bScore=playerColor==='b'?pScore:(1-pScore);
   const rec={gid,white:game.white,black:game.black,wScore,bScore,wEloDelta:playerColor==='w'?pChg:0,bEloDelta:playerColor==='b'?pChg:0,ts:Date.now(),initWhiteMs:iWMs,initBlackMs:iBMs};
@@ -57,14 +65,15 @@ async function finalizeGame(game,gid,me){
   if(['white_wins','black_timeout','resigned_black'].includes(game.status)){wSc=1;bSc=0;}
   else if(['black_wins','white_timeout','resigned_white'].includes(game.status)){wSc=0;bSc=1;}
   else{wSc=0.5;bSc=0.5;}
-  const[wD,bD]=await Promise.all([fGet(`players/${game.white}`),fGet(`players/${game.black}`)]);
-  const wE=wD?.elo||1000,bE=bD?.elo||1000;
+  const[wE0,bE0]=await Promise.all([readElo(game.white),readElo(game.black)]);
+  const wE=wE0??1000,bE=bE0??1000;
   const iW=game.initWhiteMs||game.whiteMs,iB=game.initBlackMs||game.blackMs;
   const wC=eloChg(wE,bE,wSc,iW,iB),bC=eloChg(bE,wE,bSc,iB,iW);
   const ts=Date.now(),nwE=wE+wC,nbE=bE+bC;
-  const wH=[...(wD?.eloHistory||[]),{elo:nwE,ts,gameId:gid,opponent:game.black,result:wSc===1?'win':wSc===0?'loss':'draw',eloDelta:wC}];
-  const bH=[...(bD?.eloHistory||[]),{elo:nbE,ts,gameId:gid,opponent:game.white,result:bSc===1?'win':bSc===0?'loss':'draw',eloDelta:bC}];
-  await Promise.all([fSet(`players/${game.white}`,{...(wD||{}),elo:nwE,eloHistory:wH.slice(-50)}),fSet(`players/${game.black}`,{...(bD||{}),elo:nbE,eloHistory:bH.slice(-50)})]);
+  await Promise.all([
+    writeRating(game.white,nwE,false,{elo:nwE,ts,gameId:gid,opponent:game.black,result:wSc===1?'win':wSc===0?'loss':'draw',eloDelta:wC}),
+    writeRating(game.black,nbE,false,{elo:nbE,ts,gameId:gid,opponent:game.white,result:bSc===1?'win':bSc===0?'loss':'draw',eloDelta:bC})
+  ]);
   const key=h2hKey(game.white,game.black);const h=await fGet(`h2h/${key}`)||{};
   await fSet(`h2h/${key}`,{...h,[game.white]:(h[game.white]||0)+(wSc===1?1:0),[game.black]:(h[game.black]||0)+(bSc===1?1:0),draws:(h.draws||0)+(wSc===0.5?1:0)});
   const rec={gid,white:game.white,black:game.black,wScore:wSc,bScore:bSc,wEloDelta:wC,bEloDelta:bC,ts,initWhiteMs:iW,initBlackMs:iB};

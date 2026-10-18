@@ -4,7 +4,7 @@
      bots.js     bot roster + search  firebase.js  backend handles
      pieces.js   piece artwork        utils.js     formatting helpers
    Keep logic the server-side bot worker will need out of this file. */
-import{fSet,fGet,fOn,fPush,auth,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut,deleteUser}from'./firebase.js';
+import{fSet,fGet,fOn,fPush,fUpdate,fGetLast,auth,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut,deleteUser}from'./firebase.js';
 import{pc,TERM,ib,legals,applyMove,premoveValid}from'./engine.js';
 import{esc,fs,ft,timeAgo,h2hKey}from'./utils.js';
 import{pi}from'./pieces.js';
@@ -153,17 +153,23 @@ function tcHtml(which,val){
    Identity lives in Firebase Auth; the DB only maps uid <-> username.
      usernames/{username} = uid   (uniqueness lock, write-once)
      uidNames/{uid}       = username
-     players/{username}   = { uid, elo, ... }
+     players/{username}   = { uid, nationality, club, joined }
+     leaderboard/{username} = { elo, isBot }   — the only node clients subscribe to
    The rest of the app still works with S.user = username, unchanged. */
 const NAME_RE=/^[a-z0-9_]{2,20}$/;
 const START_ELO=1000;
 
-const newPlayer=uid=>({uid,elo:START_ELO,joined:Date.now(),nationality:'',club:'',eloHistory:[{elo:START_ELO,ts:Date.now()}]});
+const newPlayer=uid=>({uid,joined:Date.now(),nationality:'',club:''});
 
+/* Makes sure both halves of a player exist: the identity record and the small
+   leaderboard row everyone subscribes to. Also carries an `elo` left over on an
+   old players record across to the leaderboard, so nobody loses a rating. */
 async function ensurePlayer(name,uid){
   const p=await fGet(`players/${name}`);
   if(!p)await fSet(`players/${name}`,newPlayer(uid));
-  else if(p.uid!==uid)await fSet(`players/${name}`,{...p,uid});
+  else if(p.uid!==uid)await fUpdate(`players/${name}`,{uid});
+  const lb=await fGet(`leaderboard/${name}`);
+  if(!lb)await fSet(`leaderboard/${name}`,{elo:p?.elo??START_ELO,isBot:false});
 }
 
 // Claims a username for a uid. Returns '' on success, or an error message.
@@ -305,7 +311,9 @@ function startLobby(){
   beat();hbId=setInterval(beat,5000);
   unsub();
   const u1=fOn('presence',d=>{S.presence=d||{};if(S.screen==='lobby')render();});
-  const u2=fOn('players',d=>{S.allPlayers=d||{};if(S.screen==='lobby')render();});
+  // Subscribe to ratings only — never to the whole players tree, which would
+  // re-download every profile and every ELO history on each rating change.
+  const u2=fOn('leaderboard',d=>{S.allPlayers=d||{};if(S.screen==='lobby')render();});
   const u3=fOn('challenges',d=>{
     if(!d){S.inChalls=[];if(S.screen==='lobby')render();return;}
     const mine=[];
@@ -479,9 +487,22 @@ W.decline=async id=>{const ch=S.inChalls.find(c=>c.id===id);if(ch)await fSet(`ch
 W.logout=async()=>{clearInterval(hbId);unsub();if(S.user)await fSet(`presence/${S.user}`,{ts:0,status:'offline'});S.user=null;S.uid=null;try{await signOut(auth);}catch{}S.screen='auth';render();};
 
 /* ═══ PROFILE ═══ */
-W.openProf=async name=>{S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();const[pd,pg]=await Promise.all([fGet(`players/${name}`),fGet(`playerGames/${name}`)]);S.profileData=pd||(BOT_BY_NAME[name]?{elo:BOT_BY_NAME[name].seed,isBot:true,nationality:BOT_BY_NAME[name].flag,club:''}:{elo:1000});S.profileGames=pg?Object.values(pg).sort((a,b)=>b.ts-a.ts):[];if(S.screen==='profile')render();};
+W.openProf=async name=>{
+  S.profileTarget=name;S.profileData=null;S.profileGames=[];S.profileTab='stats';S.screen='profile';render();
+  // Identity, recent games and the tail of the rating history — all on demand.
+  const[pd,pg,hist]=await Promise.all([fGet(`players/${name}`),fGet(`playerGames/${name}`),fGetLast(`history/${name}`,60)]);
+  const bot=BOT_BY_NAME[name];
+  const elo=S.allPlayers[name]?.elo??bot?.seed??1000;
+  S.profileData={...(pd||{}),elo,
+    isBot:!!(bot||S.allPlayers[name]?.isBot),
+    nationality:pd?.nationality||bot?.flag||'',
+    club:pd?.club||'',
+    eloHistory:hist?Object.values(hist).sort((a,b)=>a.ts-b.ts):[]};
+  S.profileGames=pg?Object.values(pg).sort((a,b)=>b.ts-a.ts):[];
+  if(S.screen==='profile')render();
+};
 W.profTab=t=>{S.profileTab=t;render();};
-W.saveProf=async()=>{const nat=(document.getElementById('pn')?.value||'').trim().slice(0,50),club=(document.getElementById('pc')?.value||'').trim().slice(0,50);const p=await fGet(`players/${S.profileTarget}`);await fSet(`players/${S.profileTarget}`,{...p,nationality:nat,club});S.profileData={...S.profileData,nationality:nat,club};render();};
+W.saveProf=async()=>{const nat=(document.getElementById('pn')?.value||'').trim().slice(0,50),club=(document.getElementById('pc')?.value||'').trim().slice(0,50);await fUpdate(`players/${S.profileTarget}`,{nationality:nat,club});S.profileData={...S.profileData,nationality:nat,club};render();};
 W.backLobby=()=>{S.screen='lobby';render();};
 W.deleteAccount=async()=>{
   if(!confirm('Permanently delete your account and all data? This cannot be undone.'))return;
@@ -493,6 +514,8 @@ W.deleteAccount=async()=>{
   // so the players record has to be the last thing deleted.
   try{
     await fSet(`playerGames/${u}`,null);
+    await fSet(`history/${u}`,null);
+    await fSet(`leaderboard/${u}`,null);
     await fSet(`presence/${u}`,null);
     await fSet(`usernames/${u}`,null);
     await fSet(`uidNames/${fbUser.uid}`,null);
