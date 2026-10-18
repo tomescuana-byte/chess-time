@@ -471,14 +471,14 @@ W.deleteAccount=async()=>{
   const u=S.user,fbUser=auth.currentUser;
   if(!u||!fbUser)return;
   // DB first, while the rules can still match this uid; the auth user goes last.
+  // Order matters: the rules prove ownership of playerGames via players/{u}/uid,
+  // so the players record has to be the last thing deleted.
   try{
-    await Promise.all([
-      fSet(`players/${u}`,null),
-      fSet(`presence/${u}`,null),
-      fSet(`playerGames/${u}`,null),
-      fSet(`usernames/${u}`,null),
-      fSet(`uidNames/${fbUser.uid}`,null)
-    ]);
+    await fSet(`playerGames/${u}`,null);
+    await fSet(`presence/${u}`,null);
+    await fSet(`usernames/${u}`,null);
+    await fSet(`uidNames/${fbUser.uid}`,null);
+    await fSet(`players/${u}`,null);
   }catch{alert('Could not delete your data. Try again in a moment.');return;}
   clearInterval(hbId);unsub();
   try{await deleteUser(fbUser);}
