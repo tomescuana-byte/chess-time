@@ -9,7 +9,7 @@ import{pc,TERM,ib,legals,applyMove,premoveValid}from'./engine.js';
 import{esc,fs,ft,timeAgo,h2hKey}from'./utils.js';
 import{pi}from'./pieces.js';
 import{applyAutoTime,finalizeGame,finalizeBotGame,resetBotEloLock}from'./elo.js';
-import{BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botAcceptsChallenge,botReplyDelay,startBotGame,getBotPlayers}from'./bots.js';
+import{BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botAcceptsChallenge,botReplyDelay,startBotGame,getBotPlayers,evalBoard}from'./bots.js';
 
 /* ═══ SESSION ═══
    Firebase Auth owns the session (persisted in localStorage by the SDK).
@@ -826,7 +826,7 @@ function profileHtml(){
 function enterGame(gid,game){
   leaveQueue();clearInterval(hbId);unsub();
   S.gid=gid;S.gInfo=game;
-  S.gs={board:JSON.parse(game.boardJson),turn:game.turn,castling:game.castling,enPassant:game.enPassant||null,fullMoves:game.fullMoves,status:game.status};
+  S.gs={board:JSON.parse(game.boardJson),turn:game.turn,castling:game.castling,enPassant:game.enPassant||null,fullMoves:game.fullMoves,halfMoves:game.halfMoves||0,rep:game.rep||{},status:game.status};
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';
   if(game.isBot&&game.botName&&game.botColor&&!TERM.includes(game.status)){
     resetBotEloLock();
@@ -837,7 +837,7 @@ function enterGame(gid,game){
   render();
   const u=fOn(`games/${gid}`,g=>{
     if(!g)return;S.gInfo=g;
-    S.gs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
+    S.gs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,halfMoves:g.halfMoves||0,rep:g.rep||{},status:g.status};
     if(TERM.includes(g.status)&&!g.eloUpdated){if(g.isBot)finalizeBotGame(g,gid,S.user);else finalizeGame(g,gid,S.user);}
     const myC=g.white===S.user?'w':'b';
     if(S.premove?.from&&S.premove?.to&&g.turn===myC&&!TERM.includes(g.status)){
@@ -960,13 +960,57 @@ async function execMove(from,to,promo){
   const nW=myC==='w'?Math.max(0,gInfo.whiteMs-el):gInfo.whiteMs;
   const nB=myC==='b'?Math.max(0,gInfo.blackMs-el):gInfo.blackMs;
   const ngs=applyMove(gs,from,to,promo);
-  const ng={...gInfo,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+  const ng={...gInfo,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,halfMoves:ngs.halfMoves,rep:ngs.rep,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now(),drawOffer:null};
   S.gs=ngs;S.gInfo=ng;await fSet(`games/${gid}`,ng);
   if(TERM.includes(ngs.status)&&!ng.eloUpdated){if(ng.isBot)finalizeBotGame(ng,gid,S.user);else finalizeGame(ng,gid,S.user);}
   render();
 }
 W.resign=async()=>{const{gInfo,gs,user,gid}=S;if(!gInfo||!gid)return;const st=gInfo.white===user?'resigned_white':'resigned_black';const upd={...gInfo,boardJson:JSON.stringify(gs.board),status:st};await fSet(`games/${gid}`,upd);S.gInfo={...gInfo,status:st};S.gs={...gs,status:st};finalizeGame(upd,gid,S.user);render();};
 W.leave=()=>{unsub();startLobby();};
+
+/* ── Draw offers ── stored on the game so both sides (and a reconnecting
+   player) see the same thing. Cleared on the next move. */
+W.offerDraw=async()=>{
+  const{gInfo,gs,user,gid}=S;if(!gInfo||!gid||TERM.includes(gs.status))return;
+  const myC=gInfo.white===user?'w':'b';
+  await fUpdate(`games/${gid}`,{drawOffer:myC});
+  S.gInfo={...gInfo,drawOffer:myC};render();
+  if(gInfo.isBot)botAnswersDraw(gid,gInfo,gs,myC);
+};
+W.declineDraw=async()=>{
+  const{gInfo,gid}=S;if(!gInfo||!gid)return;
+  await fUpdate(`games/${gid}`,{drawOffer:null});
+  S.gInfo={...gInfo,drawOffer:null};render();
+};
+W.acceptDraw=async()=>{
+  const{gInfo,gs,gid}=S;if(!gInfo||!gid||TERM.includes(gs.status))return;
+  const upd={...gInfo,boardJson:JSON.stringify(gs.board),status:'draw_agreed',drawOffer:null};
+  await fSet(`games/${gid}`,upd);
+  S.gInfo={...upd};S.gs={...gs,status:'draw_agreed'};
+  if(upd.isBot)finalizeBotGame(upd,gid,S.user);else finalizeGame(upd,gid,S.user);
+  render();
+};
+
+/* A bot weighs the offer the way a player would: it takes the draw when it is
+   worse off, or when the position is level and the game has gone long. */
+function botAnswersDraw(gid,gInfo,gs,offeredBy){
+  const botC=gInfo.botColor;
+  setTimeout(async()=>{
+    const g=await fGet(`games/${gid}`);
+    if(!g||g.drawOffer!==offeredBy||TERM.includes(g.status))return;
+    const score=evalBoard(JSON.parse(g.boardJson));           // + favours white
+    const fromBot=botC==='w'?score:-score;
+    const accept=fromBot<=-150||(Math.abs(fromBot)<80&&(g.fullMoves||0)>35);
+    if(accept){
+      const upd={...g,status:'draw_agreed',drawOffer:null};
+      await fSet(`games/${gid}`,upd);
+      finalizeBotGame(upd,gid,S.user);
+    }else{
+      await fUpdate(`games/${gid}`,{drawOffer:null});
+      S.challMsg='';
+    }
+  },2000+Math.random()*6000);
+}
 
 function gameHtml(){
   const{gs,gInfo,user,dispMs,sel,lMv,promo,premove}=S;
@@ -979,12 +1023,12 @@ function gameHtml(){
   // the game was actually created with — otherwise every bot shows a flat 1000.
   const oppElo=S.allPlayers[oppN]?.elo??(gInfo.botName===oppN?gInfo.botElo:null)??BOT_BY_NAME[oppN]?.seed??1000;
   const myElo=S.allPlayers[myN]?.elo||1000;
-  const sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',draw_stalemate:'Draw — stalemate!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — resign!',resigned_black:'White wins — resign!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
+  const sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',draw_stalemate:'Draw — stalemate!',draw_fifty:'Draw — fifty-move rule!',draw_repetition:'Draw — threefold repetition!',draw_material:'Draw — insufficient material!',draw_agreed:'Draw — agreed!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — resign!',resigned_black:'White wins — resign!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const clk=(n,elo,ms,act,me,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:7px"><img src="${pi(me?(myC==='w'?'K':'k'):(myC==='w'?'k':'K'))}" style="width:20px;height:20px;opacity:.7"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}${me?' (you)':''}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span>${me&&premove?.to?`<span style="font-size:.7rem;color:#7da0c0">pre</span>`:''}</div><span id="${id}" style="font-size:${ms<15000?'1.45rem':'1.6rem'};font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
   const promoHtml=promo?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:200"><div style="background:#1f1e1d;border-radius:12px;padding:1.5rem;text-align:center;border:1px solid #2a2927"><p style="margin:0 0 1rem;color:#bab9b8;font-size:.9rem">Promotion:</p><div style="display:flex;gap:8px">${['q','r','b','n'].map(p=>`<button onclick="W.promo('${p}')" style="width:68px;height:68px;border-radius:8px;border:2px solid #3d3a36;background:#161512;cursor:pointer;padding:6px"><img src="${pi(myC==='w'?p.toUpperCase():p)}" style="width:100%;height:100%"></button>`).join('')}</div></div></div>`:'';
   const overHtml=fin?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;justify-content:center;align-items:center;z-index:100"><div style="background:#1f1e1d;border-radius:12px;padding:2rem;text-align:center;max-width:300px;margin:1rem;border:1px solid #3d3a36;box-shadow:0 8px 40px rgba(0,0,0,.8)"><div style="font-size:3rem;margin-bottom:1rem">${(['white_wins','black_timeout','resigned_black'].includes(gs.status))?'♔':(['black_wins','white_timeout','resigned_white'].includes(gs.status))?'♚':'½'}</div><h2 style="margin:0 0 8px;color:#f0ede8;font-size:1.1rem">${sm()}</h2><p style="color:#6b6a69;margin:0 0 1.5rem;font-size:.85rem">Game over</p><button onclick="W.leave()" class="btn-g" style="padding:.7rem 2rem;width:100%">← Back to Lobby</button></div></div>`:'';
   return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box">
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:${gs.status==='check'?'#c8a400':'#6b6a69'};font-weight:600;font-size:.82rem">${sm()}</span><div style="display:flex;gap:6px">${!fin?`<button onclick="W.resign()" style="padding:5px 12px;border-radius:5px;border:1px solid #882020;background:transparent;color:#cc4444;cursor:pointer;font-size:.78rem">Resign</button>`:''}${fin?`<button onclick="W.leave()" class="btn-g" style="padding:5px 12px;font-size:.8rem">← Lobby</button>`:''}</div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:${gs.status==='check'?'#c8a400':'#6b6a69'};font-weight:600;font-size:.82rem">${sm()}</span><div style="display:flex;gap:6px">${!fin&&gInfo.drawOffer&&gInfo.drawOffer!==myC?`<button onclick="W.acceptDraw()" class="btn-g" style="padding:5px 10px;font-size:.78rem">Accept draw</button><button onclick="W.declineDraw()" class="btn-o" style="padding:5px 10px;font-size:.78rem">Decline</button>`:''}${!fin&&!gInfo.drawOffer?`<button onclick="W.offerDraw()" class="btn-o" style="padding:5px 12px;font-size:.78rem">Offer draw</button>`:''}${!fin&&gInfo.drawOffer===myC?`<span style="color:#6b6a69;font-size:.76rem;align-self:center">draw offered</span>`:''}${!fin?`<button onclick="W.resign()" style="padding:5px 12px;border-radius:5px;border:1px solid #882020;background:transparent;color:#cc4444;cursor:pointer;font-size:.78rem">Resign</button>`:''}${fin?`<button onclick="W.leave()" class="btn-g" style="padding:5px 12px;font-size:.8rem">← Lobby</button>`:''}</div></div>
   ${clk(oppN,oppElo,oppMs,oppA,false,'co')}
   <div style="width:min(calc(100vw - 20px),calc(100svh - 210px));aspect-ratio:1;margin:0 auto;flex-shrink:0">${boardHtml(gs,sel,lMv,premove,myC,false)}</div>
   ${clk(myN,myElo,myMs,myA,true,'cm')}
@@ -992,11 +1036,11 @@ function gameHtml(){
 }
 
 /* ═══ SPECTATE ═══ */
-W.spectate=async gid=>{const g=await fGet(`games/${gid}`);if(!g)return;S.specGid=gid;S.specGInfo=g;S.specGs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};S.specDispMs={w:g.whiteMs,b:g.blackMs};S.screen='spectate';render();const u=fOn(`games/${gid}`,upd=>{if(!upd)return;S.specGInfo=upd;S.specGs={board:JSON.parse(upd.boardJson),turn:upd.turn,castling:upd.castling,enPassant:upd.enPassant||null,fullMoves:upd.fullMoves,status:upd.status};if(S.screen==='spectate')render();});unsubs.push(u);};
+W.spectate=async gid=>{const g=await fGet(`games/${gid}`);if(!g)return;S.specGid=gid;S.specGInfo=g;S.specGs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,halfMoves:g.halfMoves||0,rep:g.rep||{},status:g.status};S.specDispMs={w:g.whiteMs,b:g.blackMs};S.screen='spectate';render();const u=fOn(`games/${gid}`,upd=>{if(!upd)return;S.specGInfo=upd;S.specGs={board:JSON.parse(upd.boardJson),turn:upd.turn,castling:upd.castling,enPassant:upd.enPassant||null,fullMoves:upd.fullMoves,halfMoves:upd.halfMoves||0,rep:upd.rep||{},status:upd.status};if(S.screen==='spectate')render();});unsubs.push(u);};
 W.leaveSpec=()=>{unsub();startLobby();};
 function spectateHtml(){
   const{specGs:gs,specGInfo:g,specDispMs:dMs}=S;if(!gs||!g)return`<div style="display:flex;justify-content:center;align-items:center;height:100svh;color:#6b6a69">Loading...</div>`;
-  const fin=TERM.includes(gs.status),sm=()=>({white_wins:'White wins!',black_wins:'Black wins!',draw_stalemate:'Draw!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
+  const fin=TERM.includes(gs.status),sm=()=>({white_wins:'White wins!',black_wins:'Black wins!',draw_stalemate:'Draw — stalemate!',draw_fifty:'Draw — fifty-move rule!',draw_repetition:'Draw — repetition!',draw_material:'Draw — insufficient material!',draw_agreed:'Draw — agreed!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const wE=S.allPlayers[g.white]?.elo||1000,bE=S.allPlayers[g.black]?.elo||1000;
   const clk=(n,elo,ms,act,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span></div><span id="${id}" style="font-size:1.6rem;font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
   return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box"><div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:#6b6a69;font-weight:600;font-size:.82rem">Watching — ${sm()}</span><button onclick="W.leaveSpec()" class="btn-o" style="padding:5px 12px;font-size:.78rem">← Lobby</button></div>

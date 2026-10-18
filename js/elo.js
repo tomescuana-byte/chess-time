@@ -1,4 +1,4 @@
-import{fSet,fGet,fPush,fUpdate}from'./firebase.js';
+import{fSet,fGet,fPush,fUpdate,fClaim}from'./firebase.js';
 import{h2hKey}from'./utils.js';
 
 /* ── Where a rating lives ──────────────────────────────────────────────────
@@ -27,7 +27,7 @@ function resetBotEloLock(){_botEloLock=false;}
 async function finalizeBotGame(game,gid,me){
   if(_botEloLock||game.eloUpdated)return;
   _botEloLock=true; // grabbed synchronously — second concurrent call sees true immediately
-  await fSet(`games/${gid}`,{...game,eloUpdated:true});
+  if(!await fClaim(`games/${gid}/eloUpdated`)){_botEloLock=false;return;}
   const playerName=me;
   const playerColor=game.white===me?'w':'b';
   const botEloVal=game.botElo||1000;
@@ -60,12 +60,14 @@ async function finalizeBotGame(game,gid,me){
 }
 
 /* Regular (human vs human) ELO: only white player runs this to avoid double-update */
-// `me` is the player running this code: only White settles the game, so the two
-// clients never both write ELO.
+/* Either player settles the game — whoever gets there first wins an atomic claim
+   on the eloUpdated flag, and the other backs off. Previously only White could
+   settle, so if White closed the tab at the end nobody ever wrote the ratings
+   and the result was silently lost for both players. */
 async function finalizeGame(game,gid,me){
   if(game.isBot)return; // bot games handled by finalizeBotGame
-  if(game.white!==me||game.eloUpdated)return;
-  await fSet(`games/${gid}`,{...game,eloUpdated:true});
+  if(game.eloUpdated||(game.white!==me&&game.black!==me))return;
+  if(!await fClaim(`games/${gid}/eloUpdated`))return;
   let wSc,bSc;
   if(['white_wins','black_timeout','resigned_black'].includes(game.status)){wSc=1;bSc=0;}
   else if(['black_wins','white_timeout','resigned_white'].includes(game.status)){wSc=0;bSc=1;}

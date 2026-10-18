@@ -229,7 +229,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
     // A forced reply should come back instantly, the way a person's would.
     let onlyMove=false;
     try{
-      const gsPeek={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,status:g.status};
+      const gsPeek={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,halfMoves:g.halfMoves||0,rep:g.rep||{},status:g.status};
       onlyMove=scoredMoves(gsPeek,botColor).length<=1;
     }catch{}
     // Use Web Worker so main thread (clock, UI) never blocks
@@ -237,7 +237,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
       try{
         const gF=await fGet(`games/${gid}`);
         if(!gF||gF.turn!==botColor||TERM.includes(gF.status)){botThinking=false;return;}
-        const gsF={board:JSON.parse(gF.boardJson),turn:gF.turn,castling:gF.castling,enPassant:gF.enPassant||null,fullMoves:gF.fullMoves,status:gF.status};
+        const gsF={board:JSON.parse(gF.boardJson),turn:gF.turn,castling:gF.castling,enPassant:gF.enPassant||null,fullMoves:gF.fullMoves,halfMoves:gF.halfMoves||0,rep:gF.rep||{},status:gF.status};
         // Spin up a fresh worker for this move
         if(botWorker)botWorker.terminate();
         // Workers need a server (https/http). If file://, fall back to sync.
@@ -249,14 +249,14 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
           if(!m){botThinking=false;return;}
           const gF2=await fGet(`games/${gid}`);
           if(!gF2||gF2.turn!==botColor||TERM.includes(gF2.status)){botThinking=false;return;}
-          const gsF2={board:JSON.parse(gF2.boardJson),turn:gF2.turn,castling:gF2.castling,enPassant:gF2.enPassant||null,fullMoves:gF2.fullMoves,status:gF2.status};
+          const gsF2={board:JSON.parse(gF2.boardJson),turn:gF2.turn,castling:gF2.castling,enPassant:gF2.enPassant||null,fullMoves:gF2.fullMoves,halfMoves:gF2.halfMoves||0,rep:gF2.rep||{},status:gF2.status};
           const legalNow=legals(gsF2.board,m.fr,m.fc,gsF2);
           if(!legalNow.some(([tr,tc])=>tr===m.tr&&tc===m.tc)){botThinking=false;return;}
           const ngs=applyMove(gsF2,[m.fr,m.fc],[m.tr,m.tc],null);
           const el2=Date.now()-gF2.lastMoveTs;
           const nW=botColor==='w'?Math.max(0,gF2.whiteMs-el2):gF2.whiteMs;
           const nB=botColor==='b'?Math.max(0,gF2.blackMs-el2):gF2.blackMs;
-          const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+          const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,halfMoves:ngs.halfMoves,rep:ngs.rep,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
           await fSet(`games/${gid}`,ng);
           if(TERM.includes(ngs.status))clearInterval(botGameInterval);
           botThinking=false;
@@ -270,7 +270,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
             // Final check: re-fetch to make sure turn hasn't changed
             const gF2=await fGet(`games/${gid}`);
             if(!gF2||gF2.turn!==botColor||TERM.includes(gF2.status)){botThinking=false;return;}
-            const gsF2={board:JSON.parse(gF2.boardJson),turn:gF2.turn,castling:gF2.castling,enPassant:gF2.enPassant||null,fullMoves:gF2.fullMoves,status:gF2.status};
+            const gsF2={board:JSON.parse(gF2.boardJson),turn:gF2.turn,castling:gF2.castling,enPassant:gF2.enPassant||null,fullMoves:gF2.fullMoves,halfMoves:gF2.halfMoves||0,rep:gF2.rep||{},status:gF2.status};
             // Validate the move is still legal on the fresh board
             const legalNow=legals(gsF2.board,m.fr,m.fc,gsF2);
             if(!legalNow.some(([tr,tc])=>tr===m.tr&&tc===m.tc)){botThinking=false;return;}
@@ -278,7 +278,7 @@ function startBotGame(gid,botName,botColor,botEloVal,depth,blunder=0){
             const el2=Date.now()-gF2.lastMoveTs;
             const nW=botColor==='w'?Math.max(0,gF2.whiteMs-el2):gF2.whiteMs;
             const nB=botColor==='b'?Math.max(0,gF2.blackMs-el2):gF2.blackMs;
-            const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
+            const ng={...gF2,boardJson:JSON.stringify(ngs.board),turn:ngs.turn,castling:ngs.castling,enPassant:ngs.enPassant,fullMoves:ngs.fullMoves,halfMoves:ngs.halfMoves,rep:ngs.rep,status:ngs.status,whiteMs:nW,blackMs:nB,lastMoveTs:Date.now()};
             await fSet(`games/${gid}`,ng);
             if(TERM.includes(ngs.status)){
               clearInterval(botGameInterval);
