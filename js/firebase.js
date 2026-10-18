@@ -1,0 +1,16 @@
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{getDatabase,ref,set,get,push,onValue}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut,deleteUser}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+const FB={apiKey:"AIzaSyA9tbhMghPaZl9oYIZq8XB9gn_dwJpE9p4",authDomain:"sah-handicap-timp.firebaseapp.com",databaseURL:"https://sah-handicap-timp-default-rtdb.europe-west1.firebasedatabase.app",projectId:"sah-handicap-timp",storageBucket:"sah-handicap-timp.firebasestorage.app",messagingSenderId:"743890211052",appId:"1:743890211052:web:0fceec9669dcb4fe2855c9"};
+const fbApp=initializeApp(FB);
+const db=getDatabase(fbApp);
+const auth=getAuth(fbApp);
+const R=p=>ref(db,p);
+const fSet=(p,v)=>set(R(p),v);
+const fGet=async p=>{try{const s=await get(R(p));return s.exists()?s.val():null}catch{return null}};
+const fOn=(p,cb)=>onValue(R(p),s=>cb(s.exists()?s.val():null));
+const fPush=(p,v)=>push(R(p),v);
+
+/* Firebase handles, shared by the app and (later) the bot worker. */
+export{fbApp,db,auth,R,fSet,fGet,fOn,fPush};
+export{createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,onAuthStateChanged,signOut,deleteUser};
