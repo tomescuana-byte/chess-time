@@ -3,7 +3,7 @@
   "description": "Keeps the bot ladder alive: presence and bot-versus-bot games.",
   "type": "module",
   "main": "index.js",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "dependencies": {
     "firebase-admin": "12.7.0",
     "firebase-functions": "6.1.1"

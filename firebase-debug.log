@@ -1,0 +1,169 @@
+[debug] [2026-10-18T20:37:25.036Z] ----------------------------------------------------------------------
+[debug] [2026-10-18T20:37:25.042Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2026-10-18T20:37:25.042Z] CLI Version:   15.34.0
+[debug] [2026-10-18T20:37:25.043Z] Platform:      win32
+[debug] [2026-10-18T20:37:25.043Z] Node Version:  v20.20.0
+[debug] [2026-10-18T20:37:25.044Z] Detected Agent: unknown
+[debug] [2026-10-18T20:37:25.044Z] Time:          Sun Oct 18 2026 23:37:25 GMT+0300 (Eastern European Summer Time)
+[debug] [2026-10-18T20:37:25.044Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-10-18T20:37:28.238Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-10-18T20:37:28.238Z] > authorizing via signed-in user (tomescuana83@gmail.com)
+[debug] [2026-10-18T20:37:28.239Z] [iam] checking project sah-handicap-timp for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-10-18T20:37:28.241Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:28.241Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:28.243Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp:testIamPermissions [none]
+[debug] [2026-10-18T20:37:28.243Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp:testIamPermissions  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:28.243Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-10-18T20:37:29.317Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp:testIamPermissions 200
+[debug] [2026-10-18T20:37:29.317Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-10-18T20:37:29.318Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:29.318Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:29.318Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-10-18T20:37:29.319Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-10-18T20:37:30.234Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions 404
+[debug] [2026-10-18T20:37:30.235Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions {"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}}
+[debug] [2026-10-18T20:37:30.236Z] [functions] service account IAM check errored, deploy may fail: Request to https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account {"name":"FirebaseError","children":[],"context":{"body":{"error":{"code":404,"message":"Unknown service account","status":"NOT_FOUND"}},"response":{"statusCode":404}},"exit":1,"message":"Request to https://iam.googleapis.com/v1/projects/sah-handicap-timp/serviceAccounts/sah-handicap-timp@appspot.gserviceaccount.com:testIamPermissions had HTTP Error: 404, Unknown service account","status":404}
+[info] 
+[info] === Deploying to 'sah-handicap-timp'...
+[info] 
+[info] i  deploying functions 
+[info] Running command: node "functions/copy-shared.js"
+[info] +  functions: Finished running predeploy script. 
+[debug] [2026-10-18T20:37:30.621Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:30.621Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:30.621Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudresourcemanager.googleapis.com [none]
+[debug] [2026-10-18T20:37:30.621Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudresourcemanager.googleapis.com  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.108Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudresourcemanager.googleapis.com 200
+[debug] [2026-10-18T20:37:31.109Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudresourcemanager.googleapis.com [omitted]
+[debug] [2026-10-18T20:37:31.128Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.128Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.129Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp [none]
+[debug] [2026-10-18T20:37:31.374Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp 200
+[debug] [2026-10-18T20:37:31.374Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/sah-handicap-timp {"projectNumber":"743890211052","projectId":"sah-handicap-timp","lifecycleState":"ACTIVE","name":"sah-handicap-timp","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2026-04-10T09:19:41.107Z"}
+[info] i  functions: preparing codebase default for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[debug] [2026-10-18T20:37:31.378Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.378Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.379Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.379Z] Checked if tokens are valid: true, expires at: 1792359180481
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[debug] [2026-10-18T20:37:31.381Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.381Z] Checked if tokens are valid: true, expires at: 1792359180481
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2026-10-18T20:37:31.382Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.382Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.383Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-10-18T20:37:31.383Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.385Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/runtimeconfig.googleapis.com [none]
+[debug] [2026-10-18T20:37:31.385Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/runtimeconfig.googleapis.com  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.390Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com [none]
+[debug] [2026-10-18T20:37:31.390Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.392Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com [none]
+[debug] [2026-10-18T20:37:31.392Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.776Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com 200
+[debug] [2026-10-18T20:37:31.777Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com [omitted]
+[warn] !  functions: missing required API cloudfunctions.googleapis.com. Enabling now... 
+[debug] [2026-10-18T20:37:31.780Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.780Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:31.781Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com:enable [none]
+[debug] [2026-10-18T20:37:31.781Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com:enable  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:31.836Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/runtimeconfig.googleapis.com 200
+[debug] [2026-10-18T20:37:31.837Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2026-10-18T20:37:32.395Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com 200
+[debug] [2026-10-18T20:37:32.396Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com [omitted]
+[warn] !  artifactregistry: missing required API artifactregistry.googleapis.com. Enabling now... 
+[debug] [2026-10-18T20:37:32.398Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:32.398Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:32.399Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com:enable [none]
+[debug] [2026-10-18T20:37:32.399Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com:enable  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:32.492Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com 200
+[debug] [2026-10-18T20:37:32.492Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com [omitted]
+[warn] !  functions: missing required API cloudbuild.googleapis.com. Enabling now... 
+[debug] [2026-10-18T20:37:32.494Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:32.494Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:32.495Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com:enable [none]
+[debug] [2026-10-18T20:37:32.496Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com:enable  x-goog-user-project=sah-handicap-timp
+[debug] [2026-10-18T20:37:32.635Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com:enable 200
+[debug] [2026-10-18T20:37:32.636Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudfunctions.googleapis.com:enable [omitted]
+[debug] [2026-10-18T20:37:33.309Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com:enable 200
+[debug] [2026-10-18T20:37:33.310Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/artifactregistry.googleapis.com:enable [omitted]
+[debug] [2026-10-18T20:37:33.825Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com:enable 200
+[debug] [2026-10-18T20:37:33.825Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/sah-handicap-timp/services/cloudbuild.googleapis.com:enable [omitted]
+[debug] [2026-10-18T20:37:43.855Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:43.856Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:43.856Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/sah-handicap-timp/adminSdkConfig [none]
+[debug] [2026-10-18T20:37:44.264Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/sah-handicap-timp/adminSdkConfig 200
+[debug] [2026-10-18T20:37:44.264Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/sah-handicap-timp/adminSdkConfig {"projectId":"sah-handicap-timp","databaseURL":"https://sah-handicap-timp-default-rtdb.europe-west1.firebasedatabase.app","storageBucket":"sah-handicap-timp.firebasestorage.app"}
+[debug] [2026-10-18T20:37:44.266Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:44.267Z] Checked if tokens are valid: true, expires at: 1792359180481
+[debug] [2026-10-18T20:37:44.267Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/sah-handicap-timp/configs [none]
+[debug] [2026-10-18T20:37:44.678Z] <<< [apiv2][status] GET https://runtimeconfig.googleapis.com/v1beta1/projects/sah-handicap-timp/configs 200
+[debug] [2026-10-18T20:37:44.679Z] <<< [apiv2][body] GET https://runtimeconfig.googleapis.com/v1beta1/projects/sah-handicap-timp/configs {}
+[debug] [2026-10-18T20:37:44.684Z] Validating nodejs source
+[warn] !  functions: Runtime Node.js 20 was deprecated on 2026-04-30 and will be decommissioned on 2026-10-30, after which you will not be able to deploy without upgrading. Consider upgrading now to avoid disruption. See https://cloud.google.com/functions/docs/runtime-support for full details on the lifecycle policy 
+[warn] !  functions: Couldn't find firebase-functions package in your source code. Have you run 'npm install'? 
+[debug] [2026-10-18T20:37:44.689Z] getFunctionsSDKVersion encountered error: Cannot find module 'firebase-functions'
+Require stack:
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\versioning.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\prepare.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\emulator\functionsEmulatorShared.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\hosting\prepare.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\hosting\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\checkValidTargetFilters.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\deploy.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\cli.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js {"code":"MODULE_NOT_FOUND","requireStack":["C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\functions\\runtimes\\node\\versioning.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\functions\\runtimes\\node\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\functions\\runtimes\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\functions\\prepare.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\emulator\\functionsEmulatorShared.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\frameworks\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\hosting\\prepare.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\hosting\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\deploy\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\checkValidTargetFilters.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\commands\\deploy.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\commands\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\index.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\bin\\cli.js","C:\\Users\\tomes\\AppData\\Roaming\\npm\\node_modules\\firebase-tools\\lib\\bin\\firebase.js"]}
+[debug] [2026-10-18T20:37:44.701Z] checkFunctionsSDKVersion encountered error: Invalid Version:  {}
+[debug] [2026-10-18T20:37:44.704Z] > [functions] package.json contents: {
+  "name": "blitz-odds-functions",
+  "description": "Keeps the bot ladder alive: presence and bot-versus-bot games.",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "12.7.0",
+    "firebase-functions": "6.1.1"
+  },
+  "private": true
+}
+[debug] [2026-10-18T20:37:44.706Z] Building nodejs source
+[info] i  functions: Loading and analyzing source code for codebase default to determine what to deploy 
+[debug] [2026-10-18T20:37:44.710Z] Could not parse firebase-functions version '' into semver.
+[debug] [2026-10-18T20:37:44.712Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-10-18T20:37:44.785Z] Error: Cannot find module 'firebase-functions'
+Require stack:
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\prepare.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\emulator\functionsEmulatorShared.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\hosting\prepare.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\hosting\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\checkValidTargetFilters.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\deploy.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\commands\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\index.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\cli.js
+- C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Function.resolve (node:internal/modules/helpers:193:19)
+    at Delegate.findFunctionsBinary (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js:98:33)
+    at Delegate.spawnFunctionsProcess (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js:128:30)
+    at Delegate.serveAdmin (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js:149:35)
+    at Delegate.discoverBuild (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\runtimes\node\index.js:192:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async loadCodebases (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\prepare.js:548:33)
+    at async prepare (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\functions\prepare.js:181:24)
+    at async chain (C:\Users\tomes\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\index.js:119:9)
+[error] 
+[error] Error: An unexpected error has occurred.
