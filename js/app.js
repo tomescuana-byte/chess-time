@@ -846,8 +846,16 @@ function enterGame(gid,game){
     resetBotEloLock();
     startBotGame(gid,game.botName,game.botColor,game.botElo||1000);
   }
-  fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid});
-  hbId=setInterval(()=>fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid}),5000);
+  /* "In a game" has to stop being true the moment the game ends, not when the
+     player gets around to leaving the final screen. Otherwise they sit in the
+     lobby marked as playing, with a Watch button on a game that is over. */
+  const beat=()=>{
+    const live=S.gInfo&&!TERM.includes(S.gInfo.status);
+    fSet(`presence/${S.user}`,live?{ts:Date.now(),status:'ingame',gameId:gid}
+                                  :{ts:Date.now(),status:'online'});
+  };
+  beat();
+  hbId=setInterval(beat,5000);
   render();
   const u=fOn(`games/${gid}`,g=>{
     if(!g)return;S.gInfo=g;
@@ -1050,14 +1058,16 @@ function gameHtml(){
 }
 
 /* ═══ SPECTATE ═══ */
-W.spectate=async gid=>{const g=await fGet(`games/${gid}`);if(!g)return;S.specGid=gid;S.specGInfo=g;S.specGs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,halfMoves:g.halfMoves||0,rep:g.rep||{},status:g.status};S.specDispMs={w:g.whiteMs,b:g.blackMs};S.screen='spectate';render();const u=fOn(`games/${gid}`,upd=>{if(!upd)return;S.specGInfo=upd;S.specGs={board:JSON.parse(upd.boardJson),turn:upd.turn,castling:upd.castling,enPassant:upd.enPassant||null,fullMoves:upd.fullMoves,halfMoves:upd.halfMoves||0,rep:upd.rep||{},status:upd.status};if(S.screen==='spectate')render();});unsubs.push(u);};
+W.spectate=async gid=>{const g=await fGet(`games/${gid}`);if(!g){S.challMsg='That game is no longer available.';render();return;}S.specGid=gid;S.specGInfo=g;S.specGs={board:JSON.parse(g.boardJson),turn:g.turn,castling:g.castling,enPassant:g.enPassant||null,fullMoves:g.fullMoves,halfMoves:g.halfMoves||0,rep:g.rep||{},status:g.status};S.specDispMs={w:g.whiteMs,b:g.blackMs};S.screen='spectate';render();const u=fOn(`games/${gid}`,upd=>{if(!upd)return;S.specGInfo=upd;S.specGs={board:JSON.parse(upd.boardJson),turn:upd.turn,castling:upd.castling,enPassant:upd.enPassant||null,fullMoves:upd.fullMoves,halfMoves:upd.halfMoves||0,rep:upd.rep||{},status:upd.status};if(S.screen==='spectate')render();});unsubs.push(u);};
 W.leaveSpec=()=>{unsub();startLobby();};
 function spectateHtml(){
   const{specGs:gs,specGInfo:g,specDispMs:dMs}=S;if(!gs||!g)return`<div style="display:flex;justify-content:center;align-items:center;height:100svh;color:#6b6a69">Loading...</div>`;
-  const fin=TERM.includes(gs.status),sm=()=>({white_wins:'White wins!',black_wins:'Black wins!',draw_stalemate:'Draw — stalemate!',draw_fifty:'Draw — fifty-move rule!',draw_repetition:'Draw — repetition!',draw_material:'Draw — insufficient material!',draw_agreed:'Draw — agreed!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
+  // Every ending has to be named here. A finished game that falls through to
+  // "White to move" looks like a live game that simply never moves.
+  const fin=TERM.includes(gs.status),sm=()=>({white_wins:'White wins — checkmate!',black_wins:'Black wins — checkmate!',white_timeout:'Black wins — time!',black_timeout:'White wins — time!',resigned_white:'Black wins — White resigned',resigned_black:'White wins — Black resigned',draw_stalemate:'Draw — stalemate!',draw_fifty:'Draw — fifty-move rule!',draw_repetition:'Draw — repetition!',draw_material:'Draw — insufficient material!',draw_agreed:'Draw — agreed!',check:'Check!'}[gs.status]||(gs.turn==='w'?'White to move':'Black to move'));
   const wE=S.allPlayers[g.white]?.elo||1000,bE=S.allPlayers[g.black]?.elo||1000;
   const clk=(n,elo,ms,act,id)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${act?'#2a3a00':'#1f1e1d'};border-radius:6px;border:1px solid ${act?'#759900':'#2a2927'}"><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600;font-size:.88rem;color:${act?'#a8c000':'#bab9b8'}">${esc(n)}</span><span style="font-size:.75rem;color:#c8a400">${elo}</span></div><span id="${id}" style="font-size:1.6rem;font-weight:700;font-family:monospace;color:${ms<10000?'#cc4444':act?'#a8c000':'#f0ede8'}">${ft(ms)}</span></div>`;
-  return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box"><div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:#6b6a69;font-weight:600;font-size:.82rem">Watching — ${sm()}</span><button onclick="W.leaveSpec()" class="btn-o" style="padding:5px 12px;font-size:.78rem">← Lobby</button></div>
+  return`<div style="background:#161512;min-height:100svh;display:flex;flex-direction:column;padding:8px 10px;gap:6px;max-width:520px;margin:0 auto;box-sizing:border-box"><div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span style="color:#6b6a69;font-weight:600;font-size:.82rem">${fin?"Finished":"Watching"} — ${sm()}</span><button onclick="W.leaveSpec()" class="btn-o" style="padding:5px 12px;font-size:.78rem">← Lobby</button></div>
   ${clk(g.black,bE,dMs.b,gs.turn==='b'&&!fin,'sco')}
   <div style="width:min(calc(100vw - 20px),calc(100svh - 210px));aspect-ratio:1;margin:0 auto;flex-shrink:0">${boardHtml(gs,null,[],null,'w',true)}</div>
   ${clk(g.white,wE,dMs.w,gs.turn==='w'&&!fin,'scw')}</div>`;
