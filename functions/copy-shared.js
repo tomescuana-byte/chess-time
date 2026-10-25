@@ -8,12 +8,18 @@ import{dirname,join}from'node:path';
 import{fileURLToPath}from'node:url';
 
 const here=dirname(fileURLToPath(import.meta.url));
-const from=join(here,'..','js');
 const to=join(here,'shared');
-const files=['engine.js','rating.js','bot-roster.js'];
-
 mkdirSync(to,{recursive:true});
-for(const f of files){
-  copyFileSync(join(from,f),join(to,f));
+for(const f of ['engine.js','rating.js','bot-roster.js','sf-driver.js']){
+  copyFileSync(join(here,'..','js',f),join(to,f));
   console.log(`copied ${f}`);
 }
+
+/* The engine itself, so the ladder plays with exactly the build the browser uses.
+   It arrives as .cjs: this package is ESM, and the Stockfish build is CommonJS,
+   so under a .js name Node would refuse to require it. */
+const sfTo=join(here,'sf');
+mkdirSync(sfTo,{recursive:true});
+copyFileSync(join(here,'..','sf','stockfish-17.1-lite-single-03e3232.js'),join(sfTo,'stockfish.cjs'));
+copyFileSync(join(here,'..','sf','stockfish-17.1-lite-single-03e3232.wasm'),join(sfTo,'stockfish.wasm'));
+console.log('copied stockfish.cjs + stockfish.wasm');

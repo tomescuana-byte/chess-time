@@ -1,245 +1,124 @@
-/* Bot roster, strength ladder, evaluation and move search.
-   Pure: no DOM, no Firebase, no browser APIs — the server imports this file as
-   it stands, so the bots that play on the ladder are the same bots you meet. */
-import{pc,legals,applyMove,inChk}from'./engine.js';
+/* The bot roster and everything that defines how each one behaves.
+   Pure: no DOM, no Firebase, no engine — the browser and the server both read
+   it, so the bot you play is the bot that gets rated.
+
+   Strength is no longer guessed. Stockfish calibrates itself: you hand it a
+   rating and it plays at that rating. Our own knobs only cover the range below
+   its floor of 1320, where it cannot aim any lower on its own. */
 import{applyAutoTime}from'./rating.js';
 
-/* The roster. `seed` is where calibration should eventually place each bot — it is
-   the starting rating only, and moves from there as the bot plays. Ratings are
-   deliberately capped below 2000 so a strong human can realistically reach #1. */
-const BOTS = [
-  {name:'789',             flag:'China',       seed:650},
-  {name:'firstgrader',     flag:'USA',         seed:720},
-  {name:'thekid',          flag:'USA',         seed:800},
-  {name:'Pompkin',         flag:'Sweden',      seed:880},
-  {name:'meatball20',      flag:'USA',         seed:950},
-  {name:'JJLOVELOVE',      flag:'Thailand',    seed:1010},
-  {name:'RabbitRain',      flag:'Japan',       seed:1070},
-  {name:'Nounours Sucre',  flag:'France',      seed:1130},
-  {name:'sorryimlikethis', flag:'Australia',   seed:1180},
-  {name:'carzen17',        flag:'Japan',       seed:1230},
-  {name:'Enni10',          flag:'Germany',     seed:1280},
-  {name:'mikim',           flag:'Russia',      seed:1320},
-  {name:'Julian1994',      flag:'Germany',     seed:1360},
-  {name:'Onyx37',          flag:'France',      seed:1400},
-  {name:'champion16',      flag:'Taiwan',      seed:1440},
-  {name:'ElerCant',        flag:'Kazakhstan',  seed:1480},
-  {name:'Norimsoo',        flag:'South Korea', seed:1520},
-  {name:'Chapelier7',      flag:'France',      seed:1560},
-  {name:'MadCassowary',    flag:'France',      seed:1600},
-  {name:'lincoln9818',     flag:'China',       seed:1650},
-  {name:'sprockitz',       flag:'USA',         seed:1700},
-  {name:'Weapenguin',      flag:'Canada',      seed:1750},
-  {name:'Flosimelator',    flag:'Germany',     seed:1800},
-  {name:'slywww2020',      flag:'',            seed:1850},
-  {name:'Komandor Tarkin', flag:'Poland',      seed:1880},
-  {name:'ArsèneLupin44',   flag:'France',      seed:1920},
-  {name:'Forevergm',       flag:'',            seed:1950}
+/* Levels: 50 apart from 700 to 1800, where nearly every player will sit, then
+   four further apart above that. Density belongs where the people are; the top
+   few exist so that a strong player always has somewhere left to climb. */
+const NAMES=[
+  {name:'789',             flag:'China'},
+  {name:'firstgrader',     flag:'USA'},
+  {name:'thekid',          flag:'USA'},
+  {name:'Pompkin',         flag:'Sweden'},
+  {name:'meatball20',      flag:'USA'},
+  {name:'JJLOVELOVE',      flag:'Thailand'},
+  {name:'RabbitRain',      flag:'Japan'},
+  {name:'Nounours Sucre',  flag:'France'},
+  {name:'sorryimlikethis', flag:'Australia'},
+  {name:'carzen17',        flag:'Japan'},
+  {name:'Enni10',          flag:'Germany'},
+  {name:'mikim',           flag:'Russia'},
+  {name:'Julian1994',      flag:'Germany'},
+  {name:'Onyx37',          flag:'France'},
+  {name:'champion16',      flag:'Taiwan'},
+  {name:'ElerCant',        flag:'Kazakhstan'},
+  {name:'Norimsoo',        flag:'South Korea'},
+  {name:'Chapelier7',      flag:'France'},
+  {name:'MadCassowary',    flag:'France'},
+  {name:'lincoln9818',     flag:'China'},
+  {name:'sprockitz',       flag:'USA'},
+  {name:'Weapenguin',      flag:'Canada'},
+  {name:'Flosimelator',    flag:'Germany'},
+  {name:'slywww2020',      flag:''},
+  {name:'Komandor Tarkin', flag:'Poland'},
+  {name:'ArsèneLupin44',   flag:'France'},
+  {name:'Forevergm',       flag:''}
 ];
-const BOT_NAMES = BOTS.map(b=>b.name);
-const BOT_BY_NAME = Object.fromEntries(BOTS.map(b=>[b.name,b]));
-const isBotName = n => Object.prototype.hasOwnProperty.call(BOT_BY_NAME,n);
+const LEVELS=[...Array(23).keys()].map(i=>700+i*50).concat([1900,2050,2300,2600]);
+const BOTS=NAMES.map((b,i)=>({...b,elo:LEVELS[i],seed:LEVELS[i]}));
 
-function botElo(idx) {
-  const b = BOTS[idx];
-  return b ? b.seed : 1000;
-}
+const BOT_NAMES=BOTS.map(b=>b.name);
+const BOT_BY_NAME=Object.fromEntries(BOTS.map(b=>[b.name,b]));
+const isBotName=n=>Object.prototype.hasOwnProperty.call(BOT_BY_NAME,n);
+const botElo=idx=>BOTS[idx]?.elo??1000;
 
-/* Strength has two knobs, not one. Depth alone gave only three distinct bots
-   across the whole ladder; the blunder rate is what separates 1200 from 1900.
-   `blunder` is the chance of playing a deliberately worse move. */
-function botDepth(elo) {
-  if(elo < 800)  return 1;
-  if(elo < 1200) return 2;
-  if(elo < 1700) return 3;
-  return 4;
-}
-function botBlunder(elo) {
-  if(elo < 800)  return 0.45;
-  if(elo < 1000) return 0.34;
-  if(elo < 1200) return 0.26;
-  if(elo < 1400) return 0.19;
-  if(elo < 1600) return 0.13;
-  if(elo < 1800) return 0.08;
-  return 0.04;
+/* How to configure the engine for a given rating.
+   At 1320 and above Stockfish aims at the rating itself. Below that it has no
+   dial left, so we ask it for several candidate moves and sometimes take one
+   that is not the best — a real move a weaker player might choose, rather than
+   a random one. */
+function strengthFor(elo){
+  if(elo>=1320)return{limitStrength:true,uciElo:Math.min(3190,elo),skill:20,multipv:1,pickWorse:0};
+  if(elo>=1250)return{limitStrength:false,uciElo:0,skill:3,multipv:3,pickWorse:0.20};
+  if(elo>=1100)return{limitStrength:false,uciElo:0,skill:1,multipv:4,pickWorse:0.32};
+  if(elo>=900) return{limitStrength:false,uciElo:0,skill:0,multipv:4,pickWorse:0.45};
+  return         {limitStrength:false,uciElo:0,skill:0,multipv:5,pickWorse:0.62};
 }
 
 /* How long a bot sits on a move. Real players spend time in proportion to what
-   is left on their clock, not a fixed amount — and they are erratic about it.
-   Never spends so long that the bot flags on its own bookkeeping. */
-function botThinkTime(elo, game, botColor, onlyMove) {
-  const left = (botColor === 'w' ? game.whiteMs : game.blackMs) || 180000;
-  if(onlyMove) return 300 + Math.random() * 500;       // forced reply: near-instant
-  const movesLeft = Math.max(12, 42 - (game.fullMoves || 1));
-  const budget = left / movesLeft;
-  let t = budget * (0.3 + Math.random() * 1.9);
-  if(Math.random() < 0.08) t *= 2.5;                   // the occasional long think
-  t = Math.min(t, left * 0.22, 25000);                 // never burn the clock down
-  return Math.max(400, t);
+   is left on their clock, and they are erratic about it. Never so long that the
+   bot flags on its own bookkeeping. */
+function botThinkTime(elo,game,botColor,onlyMove){
+  const left=(botColor==='w'?game.whiteMs:game.blackMs)||180000;
+  if(onlyMove)return 300+Math.random()*500;        // forced reply: near-instant
+  const movesLeft=Math.max(12,42-(game.fullMoves||1));
+  const budget=left/movesLeft;
+  let t=budget*(0.3+Math.random()*1.9);
+  if(Math.random()<0.08)t*=2.5;                    // the occasional long think
+  t=Math.min(t,left*0.22,25000);
+  return Math.max(400,t);
+}
+
+/* Of the time a bot spends on a move, only part is actual calculation — the
+   rest is it "looking at the board". Weak bots barely calculate at all. */
+function searchMs(elo,thinkMs){
+  const share=elo>=1800?0.6:elo>=1300?0.4:0.2;
+  return Math.max(60,Math.min(2500,Math.round(thinkMs*share)));
 }
 
 /* Whether a bot takes the challenge. Bots that accept everything instantly read
    as machines; the delay and the refusals are most of what makes them feel real. */
-function botAcceptsChallenge(botEloVal, myElo, myMs, botMs) {
-  const totalMin = (myMs + botMs) / 120000;
-  if(totalMin > 25) return {ok:false, why:'is not up for a game that long right now.'};
-  if(botMs < 45000) return {ok:false, why:'does not want that little time on the clock.'};
+function botAcceptsChallenge(botEloVal,myElo,myMs,botMs){
+  const totalMin=(myMs+botMs)/120000;
+  if(totalMin>25)return{ok:false,why:'is not up for a game that long right now.'};
+  if(botMs<45000)return{ok:false,why:'does not want that little time on the clock.'};
   /* Lopsided clocks are the whole point of this app, so "unfair" cannot mean
-     "uneven". Fair is whatever the rating gap justifies; the bot only objects to
-     being given noticeably less than that. */
-  const fairSec = applyAutoTime(botEloVal, myElo).mySec;
-  if(botMs < fairSec * 1000 * 0.7) return {ok:false, why:'thinks those odds are too steep.'};
-  if(Math.random() < 0.22) return {ok:false, why:'declined the challenge.'};
-  return {ok:true, why:''};
+     "uneven". Fair is whatever the rating gap justifies. */
+  const fairSec=applyAutoTime(botEloVal,myElo).mySec;
+  if(botMs<fairSec*1000*0.7)return{ok:false,why:'thinks those odds are too steep.'};
+  if(Math.random()<0.22)return{ok:false,why:'declined the challenge.'};
+  return{ok:true,why:''};
 }
-// How long the bot "thinks about it" before answering a challenge.
-const botReplyDelay = () => 2500 + Math.random() * 11000;
+const botReplyDelay=()=>2500+Math.random()*11000;
 
-/* ─── Piece values ─── */
-const PVAL = {P:100,N:320,B:330,R:500,Q:900,K:20000,p:-100,n:-320,b:-330,r:-500,q:-900,k:-20000};
-const PST = {
-  P:[0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
-  N:[-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
-  B:[-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
-  R:[0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
-  Q:[-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
-  K:[-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20]
-};
-
-function evalBoard(board) {
-  let score = 0;
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
-    const p=board[r][c];if(!p)continue;
-    const col=pc(p),isW=col==='w',sym=p.toUpperCase();
-    const baseVal=isW?PVAL[sym]:-PVAL[sym];
-    const pstIdx=isW?r*8+c:(7-r)*8+c;
-    const pstVal=(PST[sym]?PST[sym][pstIdx]:0)*(isW?1:-1);
-    score+=baseVal+pstVal;
+/* Material only, from White's side. Used to decide whether a bot accepts a
+   draw offer — not for playing, which Stockfish does. */
+const MAT={p:100,n:320,b:330,r:500,q:900,k:0};
+function materialScore(board){
+  let s=0;
+  for(const row of board)for(const p of row){
+    if(!p)continue;
+    const v=MAT[p.toLowerCase()]||0;
+    s+=p===p.toUpperCase()?v:-v;
   }
-  return score;
+  return s;
 }
 
-/* One move applied inside the search. Promotion matters here more than anywhere:
-   without it the search pushes a pawn to the last rank and leaves it a pawn, so
-   it never sees a won endgame and shuffles instead of queening. */
-function applyFast(board,m,color){
-  const nb=board.map(r=>[...r]);
-  let p=nb[m.fr][m.fc];
-  if(p&&p.toLowerCase()==='p'&&(m.tr===0||m.tr===7))p=color==='w'?'Q':'q';
-  nb[m.tr][m.tc]=p;nb[m.fr][m.fc]=null;
-  return nb;
-}
-
-/* Every legal move for `color`, captures first. Alpha-beta cuts far more when
-   the strongest replies are tried first; the previous random order threw that
-   away and made the search several times slower for the same result. */
-function orderedMoves(board,color,gs){
-  const out=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
-    if(!board[r][c]||pc(board[r][c])!==color)continue;
-    for(const[tr,tc] of legals(board,r,c,gs)){
-      const victim=board[tr][tc];
-      // Most valuable victim first, cheapest attacker as the tie-break.
-      const gain=victim?Math.abs(PVAL[victim.toUpperCase()]||0)-Math.abs(PVAL[board[r][c].toUpperCase()]||0)/10:-1;
-      out.push({fr:r,fc:c,tr,tc,gain});
-    }
-  }
-  out.sort((a,b)=>b.gain-a.gain);
-  return out;
-}
-
-function minimax(board,depth,alpha,beta,isMax,gs) {
-  if(depth===0) return evalBoard(board);
-  const color=isMax?'w':'b';
-  const moves=orderedMoves(board,color,gs);
-  if(!moves.length){
-    // No moves is checkmate only when the king is attacked. Treating stalemate
-    // as a win is how a winning engine talks itself into a draw.
-    if(!inChk(board,color))return 0;
-    return isMax?-(99000+depth):(99000+depth);   // a quicker mate scores higher
-  }
-  if(isMax){
-    let best=-Infinity;
-    for(const m of moves){
-      const nb=applyFast(board,m,color);
-      const ngs={...gs,board:nb,turn:'b',enPassant:null,castling:gs.castling};
-      best=Math.max(best,minimax(nb,depth-1,alpha,beta,false,ngs));
-      alpha=Math.max(alpha,best);
-      if(beta<=alpha)break;
-    }
-    return best;
-  }else{
-    let best=Infinity;
-    for(const m of moves){
-      const nb=applyFast(board,m,color);
-      const ngs={...gs,board:nb,turn:'w',enPassant:null,castling:gs.castling};
-      best=Math.min(best,minimax(nb,depth-1,alpha,beta,true,ngs));
-      beta=Math.min(beta,best);
-      if(beta<=alpha)break;
-    }
-    return best;
-  }
-}
-
-function bestBotMove(gs,color,depth) {
-  const board=gs.board;
-  const moves=orderedMoves(board,color,gs);
-  if(!moves.length)return null;
-  const isMax=color==='w';
-  let best=isMax?-Infinity:Infinity,bestMove=moves[0],alpha=-Infinity,beta=Infinity;
-  for(const m of moves){
-    const nb=applyFast(board,m,color);
-    const ngs={...gs,board:nb,turn:isMax?'b':'w',enPassant:null,castling:gs.castling};
-    const val=minimax(nb,depth-1,alpha,beta,!isMax,ngs);
-    // Ties broken at random, so two games between the same pair are not identical.
-    if(isMax?(val>best||(val===best&&Math.random()<0.3)):(val<best||(val===best&&Math.random()<0.3))){best=val;bestMove=m;}
-    if(isMax)alpha=Math.max(alpha,best);else beta=Math.min(beta,best);
-  }
-  return bestMove;
-}
-
-/* Every legal move for `color`, each scored one ply deep. Cheap enough to run on
-   the main thread, and it is all we need to pick a believable mistake. */
-function scoredMoves(gs,color){
-  const board=gs.board,out=[];
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
-    if(!board[r][c]||pc(board[r][c])!==color)continue;
-    for(const[tr,tc] of legals(board,r,c,gs)){
-      const nb=board.map(row=>[...row]);
-      nb[tr][tc]=nb[r][c];nb[r][c]=null;
-      out.push({m:{fr:r,fc:c,tr,tc},v:evalBoard(nb)});
-    }
-  }
-  return out;
-}
-
-/* Weaker bots don't search less — they search the same and then sometimes play
-   something other than what they found. Picking from the upper-middle of the
-   move list gives an inaccuracy a human would make, not a random catastrophe. */
-function maybeBlunder(gs,color,bestMove,rate){
-  if(!bestMove||Math.random()>=rate)return bestMove;
-  const scored=scoredMoves(gs,color);
-  if(scored.length<3)return bestMove;
-  scored.sort((a,b)=>color==='w'?b.v-a.v:a.v-b.v);
-  const hi=Math.max(1,Math.floor(scored.length*0.6));
-  const pick=scored[1+Math.floor(Math.random()*hi)]||scored[1];
-  return pick?pick.m:bestMove;
-}
-
-/* ─── Inject bots into allPlayers (display only) ─── */
 /* ─── Who is around right now ───
-   A different slice of the roster is available each hour. It is derived from the
-   clock alone, so every client computes the same list with no server and no
-   stored state. `(i + hour) % 3` rotates a third of the ladder — and because the
-   roster is ordered by rating, that third always spans weak to strong, so there
-   is someone near any player's level. The hash adds a few extra so the number
-   moves between hours instead of sitting at exactly nine. */
-function strHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0);}
+   A different slice of the roster is available each hour, derived from the clock
+   alone so every client computes the same list. `(i + hour) % 3` rotates a third
+   of the ladder, and because the roster is ordered by rating that third always
+   spans weak to strong. Each bot keeps its own changeover moment, so arrivals
+   and departures spread across the hour instead of all landing on the hour. */
+function strHash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0);}
 function onlineBotNames(ts=Date.now()){
   const out=new Set();
   BOTS.forEach((b,i)=>{
-    // Each one keeps its own clock, so arrivals and departures are spread across
-    // the hour instead of everybody changing at once on the hour mark.
     const phase=strHash(b.name)%3600000;
     const hour=Math.floor((ts+phase)/3600000);
     if((i+hour)%3===0||strHash(b.name+':'+hour)%100<12)out.add(b.name);
@@ -250,10 +129,10 @@ const isBotOnline=(name,ts)=>onlineBotNames(ts).has(name);
 
 function getBotPlayers(){
   const bots={},online=onlineBotNames();
-  BOTS.forEach(b=>{bots[b.name]={elo:b.seed,isBot:true,nationality:b.flag,club:'',online:online.has(b.name)};});
+  BOTS.forEach(b=>{bots[b.name]={elo:b.elo,isBot:true,nationality:b.flag,club:'',online:online.has(b.name)};});
   return bots;
 }
 
 export{BOTS,BOT_NAMES,BOT_BY_NAME,isBotName,isBotOnline,onlineBotNames,getBotPlayers,
-       botElo,botDepth,botBlunder,botThinkTime,botAcceptsChallenge,botReplyDelay,
-       evalBoard,minimax,bestBotMove,scoredMoves,maybeBlunder};
+       botElo,strengthFor,searchMs,botThinkTime,botAcceptsChallenge,botReplyDelay,
+       materialScore};

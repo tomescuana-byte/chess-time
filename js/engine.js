@@ -9,6 +9,39 @@ function ib(){const b=Array(8).fill(null).map(()=>Array(8).fill(null));b[0]=['r'
    on time odds is the worst possible ending: the player who is ahead loses to
    an empty board. */
 
+/* ── Talking to a real chess engine ────────────────────────────────────────
+   Stockfish speaks FEN and algebraic squares; this app stores the board as an
+   8x8 array with row 0 at rank 8. These four translate between the two. */
+const FILES='abcdefgh';
+const sqToAlg=(r,c)=>FILES[c]+(8-r);
+const algToSq=s=>[8-Number(s[1]),FILES.indexOf(s[0])];
+
+function toFEN(gs){
+  let placement='';
+  for(let r=0;r<8;r++){
+    let empty=0;
+    for(let c=0;c<8;c++){
+      const p=gs.board[r][c];
+      if(p){if(empty){placement+=empty;empty=0;}placement+=p;}else empty++;
+    }
+    if(empty)placement+=empty;
+    if(r<7)placement+='/';
+  }
+  const cas=gs.castling||{};
+  const rights=(cas.wK?'K':'')+(cas.wQ?'Q':'')+(cas.bK?'k':'')+(cas.bQ?'q':'')||'-';
+  const ep=gs.enPassant?sqToAlg(gs.enPassant[0],gs.enPassant[1]):'-';
+  return `${placement} ${gs.turn} ${rights} ${ep} ${gs.halfMoves||0} ${gs.fullMoves||1}`;
+}
+
+// "e2e4" or "e7e8q" -> the move shape the rest of the app uses.
+function uciToMove(uci){
+  if(!uci||uci.length<4)return null;
+  const[fr,fc]=algToSq(uci.slice(0,2));
+  const[tr,tc]=algToSq(uci.slice(2,4));
+  const promo=uci.length>4?uci[4]:null;
+  return{fr,fc,tr,tc,promo};
+}
+
 // Identity of a position for repetition purposes: men, side to move, castling
 // rights and the en-passant square. Two positions differing in any of those
 // are not the same position.
@@ -89,4 +122,5 @@ function premoveValid(piece, fr, fc, tr, tc) {
 }
 
 /* Pure rules engine — no DOM, no Firebase. Safe to reuse server-side. */
-export{pc,inB,TERM,ib,atk,fKp,inChk,raw,legals,anyLeg,applyMove,premoveValid,posKey,insufficientMaterial};
+export{pc,inB,TERM,ib,atk,fKp,inChk,raw,legals,anyLeg,applyMove,premoveValid,posKey,insufficientMaterial,
+       toFEN,uciToMove,sqToAlg,algToSq};

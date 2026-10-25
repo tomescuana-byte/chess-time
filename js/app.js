@@ -9,7 +9,7 @@ import{pc,TERM,ib,legals,applyMove,premoveValid}from'./engine.js';
 import{esc,fs,ft,timeAgo,h2hKey}from'./utils.js';
 import{pi}from'./pieces.js';
 import{applyAutoTime,finalizeGame,finalizeBotGame,resetBotEloLock}from'./elo.js';
-import{BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botDepth,botBlunder,botAcceptsChallenge,botReplyDelay,startBotGame,getBotPlayers,evalBoard}from'./bots.js';
+import{BOT_NAMES,BOT_BY_NAME,isBotName,botElo,botAcceptsChallenge,botReplyDelay,startBotGame,getBotPlayers,materialScore,prewarmEngine}from'./bots.js';
 
 /* ═══ SESSION ═══
    Firebase Auth owns the session (persisted in localStorage by the SDK).
@@ -558,6 +558,11 @@ W.search=v=>{S.search=v;render();};
    disable it) once there are enough real players. */
 const BOT_FALLBACK_MS=20000;
 const QUEUE_FRESH_MS=15000;
+/* How far apart two players may be and still be matched. It starts at 400 and
+   widens with the wait: a close game matters, but not more than getting a game
+   at all. Above ~2000 there is nobody left in range, so the ceiling has to lift. */
+const ELO_BAND=400;
+const eloBand=waitedMs=>waitedMs<10000?ELO_BAND:waitedMs<20000?700:9999;
 let queueTimer=null,queueBeat=null,queueUnsub=null;
 
 function queueHtml(){
@@ -579,6 +584,7 @@ function leaveQueue(){
 }
 
 W.startQueue=async mode=>{
+  prewarmEngine();   // the download overlaps with the wait for an opponent
   if(S.queueMode)return;
   S.queueMode=mode;S.queueSince=Date.now();S.queueNote='';S.challMsg='';render();
   const me=S.user,myElo=myEloNow();
@@ -604,11 +610,16 @@ W.startQueue=async mode=>{
     // Someone else paired with us and created the game.
     if(mine?.matched){const g=await fGet(`games/${mine.matched}`);if(g){const gid=mine.matched;leaveQueue();enterGame(gid,g);}return;}
     const now=Date.now();
-    const others=Object.entries(d||{})
-      .filter(([n,v])=>n!==me&&v&&!v.matched&&now-v.ts<QUEUE_FRESH_MS)
-      .sort((a,b)=>Math.abs(a[1].elo-myElo)-Math.abs(b[1].elo-myElo));
-    if(!others.length)return;
-    const[oppName,opp]=others[0];
+    const waiting=Object.entries(d||{})
+      .filter(([n,v])=>n!==me&&v&&!v.matched&&now-v.ts<QUEUE_FRESH_MS);
+    // Anyone within reach, picked at random rather than nearest, so the same two
+    // players don't meet every single time. The window opens up the longer the
+    // wait goes on, rather than leaving someone staring at a spinner.
+    const band=eloBand(Date.now()-S.queueSince);
+    const inBand=waiting.filter(([,v])=>Math.abs(v.elo-myElo)<=band);
+    const pool=inBand.length?inBand:(band>=9999?waiting:[]);
+    if(!pool.length)return;
+    const[oppName,opp]=pool[Math.floor(Math.random()*pool.length)];
     // Both sides see the same queue; the lower name creates the game so we never
     // end up with two games for one pairing.
     if(me>oppName)return;
@@ -629,14 +640,18 @@ W.startQueue=async mode=>{
 
 W.cancelQueue=()=>{leaveQueue();render();};
 
-/* Nobody showed up — pair with the bot closest to the player's rating. */
+/* Nobody showed up — pair with an available bot near the player's rating.
+   Random within the band, like a real pairing, so you don't meet the same one
+   every time; nearest only if the band is empty. */
 async function startQueueBotGame(mode){
   const myElo=myEloNow();
-  // Only from those shown as available, so the pairing matches what the lobby says.
   const byCloseness=(a,b)=>Math.abs(a.elo-myElo)-Math.abs(b.elo-myElo);
   const bots=allEntries().filter(p=>p.isBot);
-  const pool=bots.filter(p=>p.status==='online').sort(byCloseness);
-  const bot=pool[0]||bots.sort(byCloseness)[0];
+  // Only from those shown as available, so the pairing matches what the lobby says.
+  const avail=bots.filter(p=>p.status==='online');
+  const inBand=avail.filter(p=>Math.abs(p.elo-myElo)<=ELO_BAND);
+  const bot=inBand.length?inBand[Math.floor(Math.random()*inBand.length)]
+                         :(avail.sort(byCloseness)[0]||bots.sort(byCloseness)[0]);
   if(!bot){S.queueNote='No opponent available right now.';render();return;}
   const rated=mode==='ranked';
   leaveQueue();
@@ -644,15 +659,15 @@ async function startQueueBotGame(mode){
   const{mySec,oppSec}=applyAutoTime(myElo,bot.elo);
   const wMs=(iAmWhite?mySec:oppSec)*1000,bMs=(iAmWhite?oppSec:mySec)*1000;
   const botColor=iAmWhite?'b':'w';
-  const depth=botDepth(bot.elo),blunder=botBlunder(bot.elo);
+  // Stockfish is told the rating and plays at it; nothing else to configure.
   const gid=`${S.user}_${bot.name}_${Date.now()}`;
   const game={white:iAmWhite?S.user:bot.name,black:iAmWhite?bot.name:S.user,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,
     lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},
     enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated,
-    isBot:true,botName:bot.name,botColor,botElo:bot.elo,botDepth:depth,botBlunder:blunder};
+    isBot:true,botName:bot.name,botColor,botElo:bot.elo};
   await fSet(`games/${gid}`,game);
   enterGame(gid,game);
-  startBotGame(gid,bot.name,botColor,bot.elo,depth,blunder);
+  startBotGame(gid,bot.name,botColor,bot.elo);
 }
 W.goHome=()=>{S.screen='home';S.search='';render();};
 W.openLobby=()=>{S.screen='lobby';S.search='';render();};
@@ -660,7 +675,7 @@ W.setT=(w,v)=>{if(S.autoTime)return;if(w==='w')S.wTimeSec=Math.min(600,Math.max(
 W.adjT=(w,d)=>{W.setT(w,(w==='w'?S.wTimeSec:S.bTimeSec)+d);};
 W.toggleAuto=()=>{S.autoTime=!S.autoTime;if(S.autoTime){const botPlrsAT=getBotPlayers();const myEloAT=S.allPlayers[S.user]?.elo||1000;const oppEloAT=botPlrsAT[S.challTarget]?botPlrsAT[S.challTarget].elo:(S.allPlayers[S.challTarget]?.elo||1000);const{mySec,oppSec}=applyAutoTime(myEloAT,oppEloAT);const mw=S.challColor==='w';S.wTimeSec=mw?mySec:oppSec;S.bTimeSec=mw?oppSec:mySec;}render();};
 W.sendChat=async()=>{const inp=document.getElementById('chat-in');const txt=(inp?.value||'').trim();if(!txt||!S.user)return;await fPush('chat',{user:S.user,text:txt,ts:Date.now()});if(inp){inp.value='';inp.focus();}};
-W.openC=async t=>{S.challTarget=t;S.challDlg=true;S.challH2h=null;S.autoTime=false;render();const h=await fGet(`h2h/${h2hKey(S.user,t)}`);S.challH2h=h?{myWins:h[S.user]||0,oppWins:h[t]||0,draws:h.draws||0}:{myWins:0,oppWins:0,draws:0};if(S.challDlg)render();};
+W.openC=async t=>{prewarmEngine();S.challTarget=t;S.challDlg=true;S.challH2h=null;S.autoTime=false;render();const h=await fGet(`h2h/${h2hKey(S.user,t)}`);S.challH2h=h?{myWins:h[S.user]||0,oppWins:h[t]||0,draws:h.draws||0}:{myWins:0,oppWins:0,draws:0};if(S.challDlg)render();};
 W.closeC=()=>{S.challDlg=false;render();};
 W.cColor=c=>{S.challColor=c;render();};
 W.send=async()=>{
@@ -691,11 +706,10 @@ W.send=async()=>{
       if(S.outChall?.id!==id)return;          // user cancelled or moved on
       S.outChall=null;
       if(!verdict.ok){S.challMsg=`${target} ${verdict.why}`;render();return;}
-      const depth=botDepth(botEloVal),blunder=botBlunder(botEloVal);
-      const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated:false,isBot:true,botName:target,botColor,botElo:botEloVal,botDepth:depth,botBlunder:blunder};
+      const game={white,black,whiteMs:wMs,blackMs:bMs,initWhiteMs:wMs,initBlackMs:bMs,lastMoveTs:Date.now(),boardJson:JSON.stringify(ib()),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},enPassant:null,fullMoves:1,status:'ongoing',eloUpdated:false,rated:false,isBot:true,botName:target,botColor,botElo:botEloVal};
       await fSet(`games/${id}`,game);
       enterGame(id,game);
-      startBotGame(id,target,botColor,botEloVal,depth,blunder);
+      startBotGame(id,target,botColor,botEloVal);
     },botReplyDelay());
     return;
   }
@@ -830,7 +844,7 @@ function enterGame(gid,game){
   S.sel=null;S.lMv=[];S.promo=null;S.premove=null;S.screen='game';
   if(game.isBot&&game.botName&&game.botColor&&!TERM.includes(game.status)){
     resetBotEloLock();
-    startBotGame(gid,game.botName,game.botColor,game.botElo||1000,game.botDepth||2,game.botBlunder||0);
+    startBotGame(gid,game.botName,game.botColor,game.botElo||1000);
   }
   fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid});
   hbId=setInterval(()=>fSet(`presence/${S.user}`,{ts:Date.now(),status:'ingame',gameId:gid}),5000);
@@ -998,7 +1012,7 @@ function botAnswersDraw(gid,gInfo,gs,offeredBy){
   setTimeout(async()=>{
     const g=await fGet(`games/${gid}`);
     if(!g||g.drawOffer!==offeredBy||TERM.includes(g.status))return;
-    const score=evalBoard(JSON.parse(g.boardJson));           // + favours white
+    const score=materialScore(JSON.parse(g.boardJson));           // + favours white
     const fromBot=botC==='w'?score:-score;
     const accept=fromBot<=-150||(Math.abs(fromBot)<80&&(g.fullMoves||0)>35);
     if(accept){

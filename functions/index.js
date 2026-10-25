@@ -15,10 +15,11 @@ import{logger}from'firebase-functions';
 import{initializeApp}from'firebase-admin/app';
 import{getDatabase}from'firebase-admin/database';
 
-import{ib,legals,applyMove,TERM,pc}from'./shared/engine.js';
+import{ib,applyMove,TERM,toFEN,uciToMove}from'./shared/engine.js';
 import{eloChg}from'./shared/rating.js';
-import{BOTS,BOT_BY_NAME,onlineBotNames,botDepth,botBlunder,
-        bestBotMove,maybeBlunder,evalBoard}from'./shared/bot-roster.js';
+import{BOTS,BOT_BY_NAME,onlineBotNames,strengthFor,materialScore}from'./shared/bot-roster.js';
+import{makeEngine}from'./shared/sf-driver.js';
+import{startStockfish}from'./stockfish-node.js';
 
 // The database URL is stated rather than inferred: the instance lives in
 // europe-west1, and a default lookup has no reason to find it there.
@@ -63,10 +64,14 @@ export const botPresence=onSchedule(
    Pairs bots of similar strength and plays them out. Ratings move the same way
    they do for people, so after enough games a bot's number means what it says. */
 export const botLadder=onSchedule(
-  {schedule:'every 10 minutes',region:REGION,timeoutSeconds:300,memory:'512MiB',maxInstances:1},
+  {schedule:'every 60 minutes',region:REGION,timeoutSeconds:540,memory:'1GiB',maxInstances:1},
   async()=>{
     const cfg=await settings();
     if(!cfg.enabled){logger.info('bots disabled, skipping');return;}
+
+    const io=await startStockfish();
+    const eng=makeEngine(io);
+    await eng.init();
 
     const deadline=Date.now()+cfg.maxSeconds*1000;
     let played=0,results={w:0,b:0,d:0};
@@ -74,7 +79,7 @@ export const botLadder=onSchedule(
     for(let i=0;i<cfg.gamesPerRun&&Date.now()<deadline;i++){
       const pair=await pickPair();
       if(!pair)break;
-      const r=await playLadderGame(pair[0],pair[1],cfg.maxPlies);
+      const r=await playLadderGame(eng,pair[0],pair[1],cfg.maxPlies);
       played++;
       results[r.outcome==='white'?'w':r.outcome==='black'?'b':'d']++;
     }
@@ -103,23 +108,25 @@ async function pickPair(){
 /* Plays one game to the end and writes both ratings. No clocks: these games are
    decided by the position, and a timeout would only record who ran out of
    simulated time. Unresolved games are adjudicated on material. */
-async function playLadderGame(botA,botB,maxPlies){
+async function playLadderGame(eng,botA,botB,maxPlies){
   const whiteFirst=Math.random()<0.5;
   const white=whiteFirst?botA:botB, black=whiteFirst?botB:botA;
-  const cfgFor=n=>{const e=BOT_BY_NAME[n.name];return{depth:botDepth(n.elo),blunder:botBlunder(n.elo),seed:e?.seed};};
-  const wc=cfgFor(white), bc=cfgFor(black);
+  const eloOf=n=>BOT_BY_NAME[n.name]?.elo??n.elo;
+  const ws=strengthFor(eloOf(white)), bs=strengthFor(eloOf(black));
 
   let gs={board:ib(),turn:'w',castling:{wK:true,wQ:true,bK:true,bQ:true},
           enPassant:null,fullMoves:1,halfMoves:0,rep:{},status:'ongoing'};
 
   let plies=0;
   while(!TERM.includes(gs.status)&&plies<maxPlies){
-    const side=gs.turn==='w'?wc:bc;
-    // Depth 4 is affordable here because there is no clock to keep responsive.
-    const best=bestBotMove(gs,gs.turn,side.depth);
-    if(!best)break;
-    const m=maybeBlunder(gs,gs.turn,best,side.blunder);
-    gs=applyMove(gs,[m.fr,m.fc],[m.tr,m.tc],'q');
+    const s=gs.turn==='w'?ws:bs;
+    await eng.setStrength(s);
+    // 120ms per move: enough for Stockfish to play at the rating it was given,
+    // and short enough to finish a whole game inside one invocation.
+    const uci=await eng.bestMove(toFEN(gs),120,s.pickWorse,s.multipv);
+    const m=uciToMove(uci);
+    if(!m)break;
+    gs=applyMove(gs,[m.fr,m.fc],[m.tr,m.tc],m.promo||'q');
     plies++;
   }
 
@@ -129,7 +136,7 @@ async function playLadderGame(botA,botB,maxPlies){
   else if(TERM.includes(gs.status))outcome='draw';
   else{
     // Ran long: give it to whoever is clearly ahead, otherwise call it a draw.
-    const score=evalBoard(gs.board);
+    const score=materialScore(gs.board);
     outcome=score>150?'white':score<-150?'black':'draw';
   }
 
