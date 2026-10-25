@@ -39,7 +39,7 @@ const NAMES=[
   {name:'ArsèneLupin44',   flag:'France'},
   {name:'Forevergm',       flag:''}
 ];
-const LEVELS=[...Array(23).keys()].map(i=>700+i*50).concat([1900,2050,2300,2600]);
+const LEVELS=[...Array(23).keys()].map(i=>700+i*50).concat([1950,2200,2500,2800]);
 const BOTS=NAMES.map((b,i)=>({...b,elo:LEVELS[i],seed:LEVELS[i]}));
 
 const BOT_NAMES=BOTS.map(b=>b.name);

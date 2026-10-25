@@ -47,18 +47,10 @@ async function finalizeBotGame(game,gid,me){
   const rated=game.rated!==false;
   const pChg=rated?eloChg(pE,botEloVal,pScore,myMs,oppMs,multFor(pRow)):0;
   const nPE=pE+pChg,ts=Date.now();
-  if(rated){
-    await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Unknown',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg},pRow.games);
-    const botName=game.botName;
-    if(botName){
-      const bRow=await readRow(botName);
-      const botCurElo=bRow.elo??botEloVal;
-      const botScore=1-pScore;
-      const botChg=eloChg(botCurElo,pE,botScore,oppMs,myMs,1);
-      const nBotE=Math.max(100,botCurElo+botChg);
-      await writeRating(botName,nBotE,true,{elo:nBotE,ts,gameId:gid,opponent:playerName,result:botScore===1?'win':botScore===0?'loss':'draw',eloDelta:botChg},bRow.games);
-    }
-  }
+  /* Only the player's rating moves. A bot's rating is a setting, not a finding:
+     the engine is told to play at that number and does, so letting results drag
+     it around would only make the ladder drift away from what it was set to. */
+  if(rated)await writeRating(playerName,nPE,false,{elo:nPE,ts,gameId:gid,opponent:game.botName||'Unknown',result:pScore===1?'win':pScore===0?'loss':'draw',eloDelta:pChg},pRow.games);
   const wScore=playerColor==='w'?pScore:(1-pScore),bScore=playerColor==='b'?pScore:(1-pScore);
   const rec={gid,white:game.white,black:game.black,wScore,bScore,wEloDelta:playerColor==='w'?pChg:0,bEloDelta:playerColor==='b'?pChg:0,ts:Date.now(),initWhiteMs:iWMs,initBlackMs:iBMs};
   await fPush(`playerGames/${playerName}`,rec);

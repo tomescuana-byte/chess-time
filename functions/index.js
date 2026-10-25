@@ -16,7 +16,6 @@ import{initializeApp}from'firebase-admin/app';
 import{getDatabase}from'firebase-admin/database';
 
 import{ib,applyMove,TERM,toFEN,uciToMove}from'./shared/engine.js';
-import{eloChg}from'./shared/rating.js';
 import{BOTS,BOT_BY_NAME,onlineBotNames,strengthFor,materialScore}from'./shared/bot-roster.js';
 import{makeEngine}from'./shared/sf-driver.js';
 import{startStockfish}from'./stockfish-node.js';
@@ -28,7 +27,6 @@ const db=getDatabase();
 const REGION='europe-west1';
 
 const read=async p=>(await db.ref(p).get()).val();
-const write=(p,v)=>db.ref(p).set(v);
 const merge=(p,v)=>db.ref(p).update(v);
 
 /* Settings live in the database so they can be changed without a deploy —
@@ -83,7 +81,8 @@ export const botLadder=onSchedule(
       played++;
       results[r.outcome==='white'?'w':r.outcome==='black'?'b':'d']++;
     }
-    logger.info(`ladder: ${played} games (W${results.w} B${results.b} D${results.d})`);
+    logger.info(`ladder: ${played} games (W${results.w} B${results.b} D${results.d})${driftReport()}`);
+    resetDrift();
   });
 
 /* Current ratings for the whole roster, falling back to each bot's seed. */
@@ -145,25 +144,20 @@ async function playLadderGame(eng,botA,botB,maxPlies){
   return{outcome,plies};
 }
 
-/* Writes both ratings and one history entry each. Ladder games carry no time
-   odds, so the clock multiplier in eloChg is neutral (equal milliseconds). */
+/* A bot's rating is a setting, not a finding — the engine is told to play at a
+   number and does. So a ladder game no longer changes anything; it is a check.
+   We compare how often the stronger side actually wins against what its rating
+   says it should, and report the gap. A rating that is right produces a gap of
+   roughly zero; a large one means the engine is not hitting its target at the
+   short thinking times we use, and the levels need adjusting by hand. */
+let drift={n:0,sum:0};
 async function settle(white,black,wScore){
   const lb=await read('leaderboard')||{};
   const wE=lb[white.name]?.elo??white.elo;
   const bE=lb[black.name]?.elo??black.elo;
-  const even=180000;
-  const wC=eloChg(wE,bE,wScore,even,even);
-  const bC=eloChg(bE,wE,1-wScore,even,even);
-  const nw=Math.max(100,wE+wC), nb=Math.max(100,bE+bC);
-  const ts=Date.now();
-  const res=s=>s===1?'win':s===0?'loss':'draw';
-
-  await merge('leaderboard',{
-    [white.name]:{elo:nw,isBot:true},
-    [black.name]:{elo:nb,isBot:true}
-  });
-  await Promise.all([
-    db.ref(`history/${white.name}`).push({elo:nw,ts,opponent:black.name,result:res(wScore),eloDelta:wC,ladder:true}),
-    db.ref(`history/${black.name}`).push({elo:nb,ts,opponent:white.name,result:res(1-wScore),eloDelta:bC,ladder:true})
-  ]);
+  const expected=1/(1+Math.pow(10,(bE-wE)/400));
+  drift.n++;
+  drift.sum+=wScore-expected;
 }
+const driftReport=()=>drift.n?` | result vs rating: ${(drift.sum/drift.n>=0?'+':'')}${(drift.sum/drift.n).toFixed(3)} over ${drift.n}`:'';
+const resetDrift=()=>{drift={n:0,sum:0};};
