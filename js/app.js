@@ -370,9 +370,14 @@ const myEloNow=()=>S.allPlayers[S.user]?.elo||1000;
 function countsHtml(){
   const all=allEntries();
   const online=all.filter(p=>p.status!=='inactive').length;
+  /* Stockfish is GPL: using it carries an obligation to say so and to point at
+     the source. One line, and it is also just true. */
   return`<div style="text-align:center;color:#6b6a69;font-size:.78rem;padding:14px 0 6px">
     <b style="color:#bab9b8">${all.length}</b> player${all.length===1?'':'s'} registered
     · <b style="color:#759900">${online}</b> online now
+    <div style="margin-top:6px;color:#3d3a36;font-size:.72rem">
+      Computer opponents by <a href="https://github.com/official-stockfish/Stockfish" target="_blank" rel="noopener" style="color:#4a4845">Stockfish</a>, free software under the GPL
+    </div>
   </div>`;
 }
 
